@@ -59,7 +59,7 @@ jobs:
             Write-Output "Using exist certificate"
             Import-PfxCertificate $certFile -Password $certPass -CertStoreLocation Cert:\CurrentUser\My\
           } else {
-            $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=Opportunity" -KeyUsage CertSign,DigitalSignature -KeyUsageProperty Sign -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -CertStoreLocation Cert:\CurrentUser\My\ -TextExtension @("2.5.29.19={text}ca=1&pathlength=0","2.5.29.37={text}1.3.6.1.5.5.7.3.3")
+            $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=Opportunity" -KeyUsage DigitalSignature -KeyUsageProperty Sign -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -CertStoreLocation Cert:\CurrentUser\My\ -TextExtension @("2.5.29.19={text}ca=0","2.5.29.37={text}1.3.6.1.5.5.7.3.3")
             ((Get-Content -Raw "./ExViewer/ExViewer.csproj") -replace 'AC82A857467374ACB64C3F8A542446485164DD50',$cert.Thumbprint) | Set-Content "./ExViewer/ExViewer.csproj"
             Write-Output "Using new certificate"
             Write-Output $cert

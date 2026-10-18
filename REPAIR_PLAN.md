@@ -296,7 +296,8 @@ issue 对应关系：
 - 2026.10.19.0：正式发布版本，代码与 2024.11.3.8 一致；CI 增加 Release 写权限，
   未配置 AppCenter 时跳过符号上传，tag 构建可直接产出四架构 Release。
 - 2026.10.19.1：修复 CI 自签名证书缺少 Basic Constraints（`2.5.29.19`）导致 `Install.ps1`
-  报「certificate is missing the basic constraints extension」；改用 CA:true + Code Signing 的自签名证书。
+  报「certificate is missing the basic constraints extension」；改用 Basic Constraints `CA:false`
+  且 Key Usage 仅为 Digital Signature 的 Code Signing 自签名证书。
 - 测试期间多次卸载重装，应用本地设置/历史被清空；最终已用测试 cookie 重新登录。
 
 下一步：
