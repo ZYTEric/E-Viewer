@@ -300,10 +300,14 @@ namespace ExViewer.Views
                 string message;
                 switch (args.WebErrorStatus)
                 {
+                // Cloudflare challenge navigations are often superseded by a new
+                // navigation; treat these as transient instead of killing the page.
                 case CoreWebView2WebErrorStatus.Unknown:
-                case CoreWebView2WebErrorStatus.CannotConnect:
+                case CoreWebView2WebErrorStatus.OperationCanceled:
                 case CoreWebView2WebErrorStatus.ConnectionAborted:
                 case CoreWebView2WebErrorStatus.ConnectionReset:
+                    return;
+                case CoreWebView2WebErrorStatus.CannotConnect:
                 case CoreWebView2WebErrorStatus.Timeout:
                 case CoreWebView2WebErrorStatus.ServerUnreachable:
                 case CoreWebView2WebErrorStatus.HostNameNotResolved:
