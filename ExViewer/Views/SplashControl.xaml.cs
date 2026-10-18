@@ -113,6 +113,15 @@ namespace ExViewer.Views
                 await Helpers.VerificationManager.VerifyAsync();
             }
 
+            // igneous is optional; an expired one must not keep the app on ExHentai.
+            if (!Client.Current.NeedLogOn
+                && Client.Current.Host == HostType.ExHentai
+                && !Client.Current.HasValidIgneous)
+            {
+                SettingCollection.Current.VisitEx = false;
+                RootControl.RootController.SendToast(Strings.Resources.Views.LogOnDialog.NoIgneousFallback, null);
+            }
+
             ccHided.Content = null;
             Window.Current.Content = rootControl;
             rootControl = null;
