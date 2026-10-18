@@ -421,14 +421,13 @@ namespace ExViewer.Views
             reset();
         }
 
-        private void wv_CoreWebView2InitializationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2InitializationCompletedEventArgs args)
+        private void wv_CoreWebView2Initialized(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2InitializedEventArgs args)
         {
-            if (args.IsSuccess)
+            if (args.Exception == null)
                 return;
 
             keepAliveTimer.Stop();
-            if (args.InitializationException != null)
-                Telemetry.LogException(args.InitializationException);
+            Telemetry.LogException(args.Exception);
             VM.UseCookieLogOn = true;
             VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.WebView2Unavailable;
             VM.ShowErrorMsg = true;

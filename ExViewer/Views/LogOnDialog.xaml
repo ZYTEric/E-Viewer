@@ -65,7 +65,7 @@
   <Grid x:Name="gdContentRoot">
     <muxc:WebView2 x:Name="wv"
                    Visibility="{x:Bind VM.UseCookieLogOn, Converter={StaticResource FalseToVisibleConverter}, Mode=OneWay}"
-                   CoreWebView2InitializationCompleted="wv_CoreWebView2InitializationCompleted"
+                   CoreWebView2Initialized="wv_CoreWebView2Initialized"
                    NavigationCompleted="wv_NavigationCompleted"
                    WebMessageReceived="wv_WebMessageReceived" />
     <StackPanel x:Name="spCookieLogOn"
