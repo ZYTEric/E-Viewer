@@ -86,6 +86,11 @@ jobs:
           pattern: Packages-*
           path: ./
           merge-multiple: true
+      - name: Bundle packages with dependencies
+        run: |
+          Get-ChildItem -Directory -Filter 'ExViewer_*_Test' | ForEach-Object {
+            Compress-Archive -Path $_.FullName -DestinationPath "$($_.Name).zip" -Force
+          }
       - name: Upload symbols
         env:
           MOBILE_CENTER_CURRENT_APP: Opportunity/E-Viewer
@@ -107,5 +112,5 @@ jobs:
           draft: true
           omitDraftDuringUpdate: true
           allowUpdates: true
-          artifacts: "*/*.msix,*/*.cer,*/*.appxsym"
+          artifacts: "*.zip,*/*.msix,*/*.cer,*/*.appxsym"
           replacesArtifacts: true

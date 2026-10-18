@@ -43,3 +43,6 @@ ClientBin/
 *.publishsettings
 node_modules/
 orleans.codegen.cs
+
+# Local working notes
+/REPAIR_PLAN.md

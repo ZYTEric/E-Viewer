@@ -245,10 +245,20 @@ namespace ExViewer.Views
             exVisited = false;
             if (VM.UseCookieLogOn)
                 return;
-            if (wv.CoreWebView2 is null)
-                wv.Source = Client.LogOnUri; // initializes CoreWebView2 and navigates
-            else
-                wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
+            try
+            {
+                if (wv.CoreWebView2 is null)
+                    wv.Source = Client.LogOnUri; // initializes CoreWebView2 and navigates
+                else
+                    wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
+            }
+            catch (Exception ex)
+            {
+                Telemetry.LogException(ex);
+                VM.UseCookieLogOn = true;
+                VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.WebView2Unavailable;
+                VM.ShowErrorMsg = true;
+            }
         }
 
         private static bool IsTrustedHost(string host)
@@ -409,6 +419,19 @@ namespace ExViewer.Views
             Client.Current.ClearLogOnInfo();
 
             reset();
+        }
+
+        private void wv_CoreWebView2InitializationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2InitializationCompletedEventArgs args)
+        {
+            if (args.IsSuccess)
+                return;
+
+            keepAliveTimer.Stop();
+            if (args.InitializationException != null)
+                Telemetry.LogException(args.InitializationException);
+            VM.UseCookieLogOn = true;
+            VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.WebView2Unavailable;
+            VM.ShowErrorMsg = true;
         }
 
         private async void wv_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
