@@ -1,4 +1,4 @@
-﻿{
+{
   "$TagInBlackList": "The tag \"{tag}\" cannot be used. You are attempting to upvote or add a tag that is blocked or blacklisted.",
   "$TagNeedNamespace1": "The tag \"{tag}\" is not allowed. Use \"{tag1}\".",
   "$TagNeedNamespace2": "The tag \"{tag}\" is not allowed. Use \"{tag1}\" or \"{tag2}\".",

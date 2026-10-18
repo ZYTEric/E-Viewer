@@ -1,4 +1,4 @@
-﻿{
+{
   "$TagInBlackList": "無法使用標籤“{tag}”，此標籤已經被加入禁止列表。",
   "$TagNeedNamespace1": "不允許使用標籤“{tag}”。改用“{tag1}”。",
   "$TagNeedNamespace2": "不允許使用標籤“{tag}”。改用“{tag1}”或“{tag2}”。",
