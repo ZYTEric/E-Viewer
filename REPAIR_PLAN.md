@@ -222,8 +222,8 @@ issue 对应关系：
 - [x] M1 Cookie 登录修复（代码已改完，等待编译/真机验证）
 - [x] M2 网页登录切换到 WebView2（代码已改完，等待编译/真机验证）
 - [x] M3 启动流程里站模式校验、错误文案（已完成基础部分）
-- [ ] M4 CI 构建与回归
-- [ ] #182 结论回帖
+- [x] M4 CI 构建通过（x86 / x64 / arm / arm64 全部成功）
+- [ ] 真机回归（T1–T10）与 #182 结论回帖
 
 ### 变更清单（M1 + M2）
 
@@ -239,10 +239,17 @@ issue 对应关系：
 
 ### 待验证（M4）
 
-- [ ] CI 四架构构建通过（重点：`Microsoft.Web.WebView2.Core` 引用、XAML `muxc:WebView2`）
+- [x] CI 四架构构建通过（x86 / x64 / arm / arm64）
 - [ ] WebView2 能否在 `ContentDialog` 中正常渲染（airspace 风险）
 - [ ] 网页登录后能否从 WebView2 拿到 igneous
 - [ ] T1–T10 真机回归
+
+### CI 结果（2026-10-18）
+
+- 首次失败与代码无关：`windows-latest` 已升级到 VS 18，UWP 工具链缺失，连未改动的项目都报 `Windows.*` 命名空间不存在。
+- 已在 `.github/workflows/ci.yml` 将 `runs-on` 固定为 `windows-2022`。
+- 修正 `CoreWebView2WebMessageReceivedEventArgs` 的 API 用法（`TryGetWebMessageAsString()`）后，
+  run `39114641150` 四架构全部通过。
 
 ### 决策日志
 
