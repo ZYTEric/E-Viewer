@@ -75,7 +75,23 @@ namespace ExClient
         internal bool HasValidIgneous
             => IsValidIgneousValue(GetExCookieValue(CookieNames.Igneous));
 
-        internal static bool IsValidIgneousValue(string value)
+        /// <summary>
+        /// Returns the igneous cookie of the current account if it is valid.
+        /// Used to reuse an existing browser session after a new log-on.
+        /// </summary>
+        public bool TryGetValidIgneousFor(long userId, out string igneous)
+        {
+            igneous = null;
+            if (Host != HostType.ExHentai || UserId != userId)
+                return false;
+            var value = GetExCookieValue(CookieNames.Igneous);
+            if (!IsValidIgneousValue(value))
+                return false;
+            igneous = value;
+            return true;
+        }
+
+        public static bool IsValidIgneousValue(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
                 return false;

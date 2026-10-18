@@ -322,7 +322,8 @@
       "UseCookieButton/Content": "Use cookie log on",
       "UseWebpageButton/Content": "Use webpage log on",
       "WebView2Unavailable": "WebView2 Runtime is not available. Install the Microsoft Edge WebView2 Runtime, or log in with cookies.",
-      "WebViewConnectionError": "The web log-on page cannot connect to the server. Make sure WebView2 traffic uses the same proxy, or log in with cookies."
+      "WebViewConnectionError": "The web log-on page cannot connect to the server. Make sure WebView2 traffic uses the same proxy, or log in with cookies.",
+      "IgneousNotAvailable": "Web log-on succeeded, but a valid igneous cookie could not be obtained (ExHentai is unreachable on this network). Switch to a node that can access ExHentai, or paste the igneous value from your browser."
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "Loading popular galleries…",

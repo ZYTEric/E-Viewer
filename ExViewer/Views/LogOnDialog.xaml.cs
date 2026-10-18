@@ -300,10 +300,21 @@ namespace ExViewer.Views
                 return;
 
             cookies.TryGetValue("igneous", out var igneous);
+            var igneousUsable = Client.IsValidIgneousValue(igneous);
+
+            // A web log-on cannot create a valid igneous on its own. If the app
+            // already has one for the same account, reuse it.
+            if (!igneousUsable
+                && long.TryParse(memberId, out var userId)
+                && Client.Current.TryGetValidIgneousFor(userId, out var existing))
+            {
+                igneous = existing;
+                igneousUsable = true;
+            }
 
             // Without igneous, let the browser visit exhentai once; the site may
             // hand out a fresh one for the current session.
-            if (string.IsNullOrWhiteSpace(igneous)
+            if (!igneousUsable
                 && Client.Current.Host == HostType.ExHentai
                 && !exVisited)
             {
@@ -315,7 +326,19 @@ namespace ExViewer.Views
             cookieLogOnTried = true;
             VM.MemberId = memberId;
             VM.PassHash = passHash;
-            VM.Igneous = igneous ?? "";
+            VM.Igneous = igneousUsable ? igneous : "";
+
+            if (!igneousUsable && Client.Current.Host == HostType.ExHentai)
+            {
+                // Web log-on succeeded, but this network cannot obtain a valid
+                // igneous. Switch to the cookie form with the other cookies filled.
+                keepAliveTimer.Stop();
+                VM.UseCookieLogOn = true;
+                VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.IgneousNotAvailable;
+                VM.ShowErrorMsg = true;
+                return;
+            }
+
             VM.LogOn.Execute();
         }
 
