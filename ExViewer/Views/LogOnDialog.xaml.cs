@@ -297,7 +297,23 @@ namespace ExViewer.Views
         {
             if (!args.IsSuccess)
             {
-                showErrorMsgInWv($"{args.WebErrorStatus} ({(int)args.WebErrorStatus})", sender.Source?.ToString() ?? "");
+                string message;
+                switch (args.WebErrorStatus)
+                {
+                case CoreWebView2WebErrorStatus.Unknown:
+                case CoreWebView2WebErrorStatus.CannotConnect:
+                case CoreWebView2WebErrorStatus.ConnectionAborted:
+                case CoreWebView2WebErrorStatus.ConnectionReset:
+                case CoreWebView2WebErrorStatus.Timeout:
+                case CoreWebView2WebErrorStatus.ServerUnreachable:
+                case CoreWebView2WebErrorStatus.HostNameNotResolved:
+                    message = Strings.Resources.Views.LogOnDialog.WebViewConnectionError;
+                    break;
+                default:
+                    message = $"{args.WebErrorStatus} ({(int)args.WebErrorStatus})";
+                    break;
+                }
+                showErrorMsgInWv(message, sender.Source?.ToString() ?? "");
                 return;
             }
 

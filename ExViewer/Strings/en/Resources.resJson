@@ -321,7 +321,8 @@
       "TitleTextBlock/Text": "LOG ON",
       "UseCookieButton/Content": "Use cookie log on",
       "UseWebpageButton/Content": "Use webpage log on",
-      "WebView2Unavailable": "WebView2 Runtime is not available. Install the Microsoft Edge WebView2 Runtime, or log in with cookies."
+      "WebView2Unavailable": "WebView2 Runtime is not available. Install the Microsoft Edge WebView2 Runtime, or log in with cookies.",
+      "WebViewConnectionError": "The web log-on page cannot connect to the server. Make sure WebView2 traffic uses the same proxy, or log in with cookies."
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "Loading popular galleries…",

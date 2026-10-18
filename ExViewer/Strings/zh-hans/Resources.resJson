@@ -321,7 +321,8 @@
       "TitleTextBlock/Text": "登录",
       "UseCookieButton/Content": "使用 cookie 登录",
       "UseWebpageButton/Content": "使用网页登录",
-      "WebView2Unavailable": "WebView2 运行时不可用。请安装 Microsoft Edge WebView2 运行时，或改用 Cookie 登录。"
+      "WebView2Unavailable": "WebView2 运行时不可用。请安装 Microsoft Edge WebView2 运行时，或改用 Cookie 登录。",
+      "WebViewConnectionError": "网页登录无法连接到服务器。请确认 WebView2 的流量已走代理，或改用 Cookie 登录。"
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "正在加载热门画廊…",

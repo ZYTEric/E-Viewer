@@ -321,7 +321,8 @@
       "TitleTextBlock/Text": "로그인",
       "UseCookieButton/Content": "쿠키 로그인 사용",
       "UseWebpageButton/Content": "웹 페이지 로그인 사용",
-      "WebView2Unavailable": "WebView2 런타임을 사용할 수 없습니다. Microsoft Edge WebView2 런타임을 설치하거나 쿠키로 로그인하세요."
+      "WebView2Unavailable": "WebView2 런타임을 사용할 수 없습니다. Microsoft Edge WebView2 런타임을 설치하거나 쿠키로 로그인하세요.",
+      "WebViewConnectionError": "웹 로그인 페이지가 서버에 연결할 수 없습니다. WebView2 트래픽이 프록시를 사용하는지 확인하거나 쿠키로 로그인하세요."
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "인기 있는 갤러리 불러오는 중…",
