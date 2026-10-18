@@ -56,7 +56,7 @@ This change fixes log-on for both e-hentai.org and ExHentai.
 - CI builds x86, x64, arm and arm64.
 - Cookie log-on with only `ipb_member_id` and `ipb_pass_hash` succeeds on the surface site.
 - Cookie log-on with a valid `igneous` loads ExHentai.
-- Web log-on completes through Cloudflare and either obtains a valid `igneous` or falls back to the surface site.
+- Web log-on completes through Cloudflare and either obtains a valid `igneous` or switches to the pre-filled cookie form for the surface site.
 - The fallback behavior was verified on networks that can and cannot access ExHentai.
 
 ## Known limitation
