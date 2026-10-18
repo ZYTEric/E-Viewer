@@ -52,7 +52,7 @@ issue 对应关系：
 
 1. **网页登录不可用是 Cloudflare 造成的**：`forums.e-hentai.org` 对非浏览器客户端返回 JS 挑战，UWP 的 EdgeHTML `WebView` 无法完成挑战，POST 同样被拦。
 2. **Cookie 登录本身可行**：只要带上有效的、当前格式的 `igneous`，里站返回正常页面。
-3. **igneous 无法再自动获取**：服务端只会下发 `igneous=mystery`。它必须来自浏览器会话（登录后由论坛/主站下发），因此 cookie 登录必须允许用户填写，且里站模式必须要求它。
+3. **igneous 无法再自动获取**：服务端只会下发 `igneous=mystery`。它必须来自已有浏览器会话；因此它是**选填**项：没有它仍可登录并使用表站，只是无法访问里站。
 4. `igneous` 当前格式形如 `vfjpw8zgrqtexu1w9`，**不是 16 进制**，旧正则 `^[0-9a-fA-F]*$` 会误拒。
 
 ---
@@ -66,7 +66,7 @@ issue 对应关系：
 | RC3 | `ResetExCookieAsync` 假设「访问里站就能拿到 igneous」，现在只会拿到 `mystery`，随后空响应被当成成功 | [Client-User.cs](ExClient/Client-User.cs#L79-L88) |
 | RC4 | 登录成功判定只看本地 cookie 是否存在，不校验服务端是否真的认账 | [Client-User.cs](ExClient/Client-User.cs#L19-L21) |
 | RC5 | 空响应 / 熊猫图 / `mystery` 没有转成可读错误，异常直接抛到 UI（出现 HRESULT 文本缺失等提示） | [MyHttpClient.cs](ExClient/Internal/MyHttpClient.cs#L26-L46) |
-| RC6 | 启动时 `NeedLogOn` 在应用设置（是否访问里站）应用之前计算，里站模式无法在启动阶段要求 igneous | [SplashControl.xaml.cs](ExViewer/Views/SplashControl.xaml.cs#L167-L208)；[SettingCollection.cs](ExViewer/Settings/SettingCollection.cs#L54-L59) |
+| RC6 | 启动时 `NeedLogOn` 在应用设置（是否访问里站）应用之前计算，`Host` / 里站模式判断不准确 | [SplashControl.xaml.cs](ExViewer/Views/SplashControl.xaml.cs#L167-L208)；[SettingCollection.cs](ExViewer/Settings/SettingCollection.cs#L54-L59) |
 
 ---
 
@@ -90,7 +90,7 @@ issue 对应关系：
      - 主站：请求 `home.php`，若页面含 `ipb_login_form` 或跳到 `bounce_login` → 凭据无效。
      - 里站：请求 `exhentai.org/`，若为空响应 / `igneous=mystery` / kokomade → igneous 无效或过期。
    - `ResetExCookieAsync` 已删除：它假设「访问里站就能拿到 igneous」，但现在只会拿到 `mystery`，保留只会掩盖错误。
-   - `NeedLogOn`：当 `Host == ExHentai` 时要求有效 igneous。
+   - `NeedLogOn`：只要求 `ipb_member_id` / `ipb_pass_hash`；igneous 选填，不阻断登录。
 2. `ExViewer/Views/LogOnDialog.xaml`
    - igneous 输入框正则改为 `^[0-9A-Za-z_-]*$`。
    - 文案标注「里站必填」。
@@ -103,11 +103,11 @@ issue 对应关系：
 5. `ExClient/Internal/MyHttpClient.cs`
    - 将空响应、`igneous=mystery`、`0x80072EFD` 等网络/HRESULT 转成可读文案。
 6. `ExViewer/Views/SplashControl.xaml.cs`
-   - 在 `NeedLogOn` 判定前应用 `SettingCollection.Apply()`，使里站模式启动即校验 igneous。
+   - 在 `NeedLogOn` 判定前应用 `SettingCollection.Apply()`，使 `Host` 正确。
 
 验收：
 - 仅填 `ipb_member_id` + `ipb_pass_hash` + 新格式 `igneous` → 登录成功，里站可打开。
-- 里站模式不填 igneous → 明确提示，而不是连接错误。
+- 里站模式不填 igneous → 仍可登录表站，并提示里站不可用；不会出现连接错误或阻断登录。
 - 错误 passhash → 提示凭据错误，而不是「无法与服务器建立连接」。
 - 旧格式（16 进制）igneous 仍被接受。
 
@@ -161,7 +161,7 @@ issue 对应关系：
 | T6 旧格式 igneous | 16 进制旧值 | 正常接受 |
 | T7 网页登录 | 论坛账号密码 | WebView2 内完成登录并落库 |
 | T8 无 WebView2 运行时 | 移除运行时 | 回退提示，不崩溃 |
-| T9 启动即里站模式 | VisitEx=true + 过期 igneous | 启动时要求重新登录 |
+| T9 启动即里站模式 | VisitEx=true + 无/过期 igneous | 仍可登录，自动回退表站并提示 |
 | T10 网络异常 | 断网/代理 | 可读网络错误，不出现 HRESULT 文本缺失 |
 
 ---
@@ -173,7 +173,7 @@ issue 对应关系：
 | 本地无 MSBuild/VS，无法编译验证 | 改动可能引入编译错误 | 依赖 GitHub Actions；每次推送前做静态检查；必要时请用户安装 VS 构建工具 |
 | WebView2 在某些 Win10 环境不可用 | 网页登录回退 | M2 做运行时检测 + 旧 WebView 回退 |
 | 服务端继续变更 | 新格式再次失效 | 校验逻辑集中到 `Client-User.cs`，便于单点修改；错误文案区分“凭据错误/igneous 过期/网络错误” |
-| 修改 `NeedLogOn` 影响老用户 | 启动被要求重新登录 | 只在里站模式要求 igneous；主站模式保持原行为 |
+| 修改 `NeedLogOn` 影响老用户 | 启动被要求重新登录 | igneous 不再阻断登录；无 igneous 自动回退表站 |
 | 误把测试 cookie 提交 | 账号泄露 | 测试 cookie 只存在于本地命令历史；文档与代码不写入 |
 
 回滚：每个里程碑独立提交；M2 可单独 revert，不影响 M1。
@@ -229,12 +229,12 @@ issue 对应关系：
 
 | 文件 | 改动 |
 | --- | --- |
-| `ExClient/Client-User.cs` | igneous 新格式校验；双域写入 cookie；登录后服务端校验；删除 `ResetExCookieAsync`；里站模式要求 igneous |
+| `ExClient/Client-User.cs` | igneous 新格式校验；双域写入 cookie；登录后服务端校验；删除 `ResetExCookieAsync`；igneous 选填，无值时回退表站 |
 | `ExClient/Internal/MyHttpClient.cs` | 移除自动重置 ex cookie 的调用，避免掩盖错误 |
 | `ExClient/Strings/{en,zh-hans,zh-hant,ko}/Resources.resjson` | 新增 `IgneousInvalid`、`IgneousRequired` |
 | `ExViewer/Views/LogOnDialog.xaml` | igneous 正则放宽；`WebView` → `muxc:WebView2` |
 | `ExViewer/Views/LogOnDialog.xaml.cs` | 新校验、错误映射、WebView2 初始化/导航完成/cookie 读取、WebView2 缺失回退 |
-| `ExViewer/Views/SplashControl.xaml.cs` | `NeedLogOn` 判定前应用设置，里站模式启动即校验 igneous |
+| `ExViewer/Views/SplashControl.xaml.cs` | `NeedLogOn` 判定前应用设置，使 `Host` 正确 |
 | `ExViewer/Strings/{en,zh-hans,zh-hant,ko}/Resources.resJson` | igneous 提示文案、`NetworkError`、`WebView2Unavailable` |
 
 ### 待验证（M4）
@@ -286,6 +286,8 @@ issue 对应关系：
   仍没有则自动切到 Cookie 表单，预填 `ipb_member_id` / `ipb_pass_hash` 并提示补充 igneous。
 - 服务端行为确认：仅带 `ipb_*` 访问里站只会返回 `igneous=mystery`（本地解密 WebView2 cookie 也确认长度为 7），
   不会自行下发有效 igneous；有效值必须来自已有浏览器会话。
+- 2024.11.3.7：igneous 恢复为选填。没有 igneous 仍可登录表站；登录成功后若 `VisitEx` 开启但无有效 igneous，
+  自动关闭 `VisitEx` 并提示。网页登录无 igneous 时预填会员号/passhash，用户可直接登录表站或补填 igneous。
 - 测试期间多次卸载重装，应用本地设置/历史被清空；最终已用测试 cookie 重新登录。
 
 下一步：
@@ -299,7 +301,7 @@ issue 对应关系：
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
 | 2026-10-18 | 优先修 Cookie 登录，网页登录后置 | Cookie 登录是唯一不依赖 Cloudflare 挑战的可靠路径 |
-| 2026-10-18 | 里站模式强制要求 igneous | 服务端只返回 `mystery`，无法自动派生 |
+| 2026-10-18 | igneous 改为选填，缺省回退表站 | 原程序 igneous 就是选填；硬性要求会阻断登录 |
 | 2026-10-18 | #182 暂不实现 | 与 WinUI 2.8 / WebView2 冲突，目标系统已停止支持 |
 | 2026-10-18 | 登录框默认 Cookie 模式 | 网页登录受 Cloudflare/代理环境影响，Cookie 登录已验证可靠 |
 | 2026-10-18 | 不再检查用户代理配置 | 代理属于敏感内容；只记录现象与前置条件 |

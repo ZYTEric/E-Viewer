@@ -1,4 +1,4 @@
-﻿using ExClient;
+using ExClient;
 using ExClient.Forums;
 using ExClient.Status;
 using Opportunity.MvvmUniverse;
@@ -307,7 +307,16 @@ namespace ExViewer.Views
                     Microsoft.AppCenter.Analytics.Analytics.TrackEvent("Log on requested", new Dictionary<string, string> { ["Result"] = (dialog.Succeed ? "Succeed" : "Failed") });
                     UpdateUserInfo(dialog.Succeed);
                     if (dialog.Succeed)
+                    {
                         Settings.SettingCollection.Current.Apply();
+                        // igneous is optional. Without it ExHentai cannot work,
+                        // so fall back to the surface site instead of failing.
+                        if (Client.Current.Host == ExClient.HostType.ExHentai && !Client.Current.HasValidIgneous)
+                        {
+                            Settings.SettingCollection.Current.VisitEx = false;
+                            SendToast(Strings.Resources.Views.LogOnDialog.NoIgneousFallback, null);
+                        }
+                    }
                     return dialog.Succeed;
                 });
             }

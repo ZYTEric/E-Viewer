@@ -18,8 +18,7 @@ namespace ExClient
 
         public bool NeedLogOn
             => UserId <= 0
-            || PassHash is null
-            || (Host == HostType.ExHentai && !HasValidIgneous);
+            || PassHash is null;
 
         internal void CheckLogOn()
         {
@@ -72,7 +71,7 @@ namespace ExClient
             CookieManager.SetCookie(new HttpCookie(name, Domains.Ex, "/") { Value = value, Expires = DateTimeOffset.Now.AddYears(1) });
         }
 
-        internal bool HasValidIgneous
+        public bool HasValidIgneous
             => IsValidIgneousValue(GetExCookieValue(CookieNames.Igneous));
 
         /// <summary>
@@ -211,9 +210,6 @@ namespace ExClient
             if (string.IsNullOrEmpty(igneous) || !IsValidIgneousValue(igneous))
                 igneous = null;
 
-            if (igneous is null && Host == HostType.ExHentai)
-                throw new InvalidOperationException(LocalizedStrings.Resources.IgneousRequired);
-
             var cookieBackUp = GetLogOnInfo();
             ClearLogOnInfo();
 
@@ -260,6 +256,11 @@ namespace ExClient
                 throw new InvalidOperationException(LocalizedStrings.Resources.WrongAccountInfo);
 
             if (Host != HostType.ExHentai)
+                return;
+
+            // igneous is optional: without it the account still works on the
+            // surface site, only ExHentai is unavailable.
+            if (!HasValidIgneous)
                 return;
 
             // Without a valid igneous, exhentai answers with an empty page and

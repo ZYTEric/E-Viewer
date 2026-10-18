@@ -323,7 +323,8 @@
       "UseWebpageButton/Content": "使用网页登录",
       "WebView2Unavailable": "WebView2 运行时不可用。请安装 Microsoft Edge WebView2 运行时，或改用 Cookie 登录。",
       "WebViewConnectionError": "网页登录无法连接到服务器。请确认 WebView2 的流量已走代理，或改用 Cookie 登录。",
-      "IgneousNotAvailable": "网页登录成功，但当前网络无法获取有效的 igneous（里站不可达）。请切换到可访问 ExHentai 的节点，或在此填写浏览器中的 igneous 后登录。"
+      "IgneousNotAvailable": "网页登录成功，但当前网络无法获取 igneous。可以直接点“登录”使用表站，或填写浏览器中的 igneous 后访问里站。",
+      "NoIgneousFallback": "未填写 igneous，已切换到表站。填写 igneous 后可在设置中重新开启里站。"
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "正在加载热门画廊…",
