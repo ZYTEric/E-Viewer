@@ -1,0 +1,253 @@
+# E-Viewer 维护计划：登录修复与 issue #180 / #182
+
+> 状态：进行中
+> 创建：2026-10-18
+> 基线：fork 自 `OpportunityLiu/E-Viewer`，最后上游提交 `eee88b3`（2024-11-02）
+
+---
+
+## 0. 这份文档怎么用
+
+- 本文件是唯一的**总纲**，记录根因、方案、里程碑、验收标准和进度。
+- 每完成一项，就在「进度记录」里打勾，并补一行结论；避免依赖对话上下文。
+- 会话中断后，从「当前进度」和未勾选项继续即可。
+- 不在本文件中保存任何真实 cookie / 账号凭据。
+
+---
+
+## 1. 问题现象
+
+| 编号 | 现象 | 触发路径 |
+| --- | --- | --- |
+| S1 | 网页登录页加载不出来 | `LogOnDialog` → `WebView.Navigate(https://forums.e-hentai.org/index.php?act=Login)` |
+| S2 | Cookie 登录报「无法找到与此错误代码关联的文本 / 无法与服务器建立连接」 | `LogOnAsync` → `ResetExCookieAsync` → `GET https://exhentai.org/` |
+| S3 | 填了 igneous 后登录按钮不可用（或直接报格式错误） | `LogOnDialog` 的 XAML/VM 正则校验 |
+| S4 | 已登录状态访问里站返回熊猫图 / 空白页 | 里站 igneous 失效或为 `mystery` |
+
+issue 对应关系：
+
+- **#180**：igneous 校验规则过时（非 16 进制字符被拒绝）→ 直接对应 S3。
+- **#182**：希望把最低系统版本从 17763 降到 15063/14393 → 与登录无直接关系，见 §7。
+- **#164**（旧 issue）：同样描述登录页打不开，属于同一类服务端变更。
+
+---
+
+## 2. 已验证的服务端事实（2026-10-18 实测）
+
+测试方式：PowerShell `Invoke-WebRequest`，使用用户提供的测试 cookie（仅内存中使用，不落盘），UA 分别使用浏览器 UA 与 App UA。
+
+| 编号 | 请求 | 结果 | 结论 |
+| --- | --- | --- | --- |
+| F1 | `GET https://forums.e-hentai.org/index.php?act=Login` | `403`，标题 `Just a moment...` | 论坛站已挂 Cloudflare JS 挑战 |
+| F2 | `POST https://forums.e-hentai.org/index.php?act=Login&CODE=01`（正确表单字段） | `403`，同样是 Cloudflare 挑战 | 网页登录的提交动作也会被拦截 |
+| F3 | `GET https://e-hentai.org/bounce_login.php` | `200`，返回 1.3 KB 登录表单，`form action` 指向论坛 `CODE=01` | 主站可渲染表单，但提交仍走论坛（仍被 CF 拦） |
+| F4 | 带 `ipb_member_id` + `ipb_pass_hash` + `igneous` 请求 `https://exhentai.org/` | `200`，55 KB 正常页面 | Cookie 本身有效，服务端登录链路可用 |
+| F5 | 只带 `ipb_member_id` + `ipb_pass_hash`（不带 igneous）请求 `https://exhentai.org/` | `200`，**0 字节**，`Set-Cookie: igneous=mystery` | 里站不再能用 ipb cookie 自动换取 igneous |
+| F6 | 不带任何 cookie 请求 `https://exhentai.org/` | `302` → `https://forums.e-hentai.org/remoteapi.php?...` | 无 cookie 时会被导向被 CF 保护的论坛域 |
+| F7 | 带有效 `ipb_*` 请求 `https://e-hentai.org/home.php` | `200`，5 个 `homebox` | 主站登录校验与主页解析结构依旧可用 |
+| F8 | 带错误 `ipb_pass_hash` 请求 `home.php` | 跳转 `https://e-hentai.org/bounce_login.php?...`，页面含 `ipb_login_form` | 可用该特征判定 cookie 无效 |
+| F9 | 带有效 `ipb_*` 请求 `https://e-hentai.org/uconfig.php` | `200`，40 KB | 设置页可用 |
+
+关键结论：
+
+1. **网页登录不可用是 Cloudflare 造成的**：`forums.e-hentai.org` 对非浏览器客户端返回 JS 挑战，UWP 的 EdgeHTML `WebView` 无法完成挑战，POST 同样被拦。
+2. **Cookie 登录本身可行**：只要带上有效的、当前格式的 `igneous`，里站返回正常页面。
+3. **igneous 无法再自动获取**：服务端只会下发 `igneous=mystery`。它必须来自浏览器会话（登录后由论坛/主站下发），因此 cookie 登录必须允许用户填写，且里站模式必须要求它。
+4. `igneous` 当前格式形如 `vfjpw8zgrqtexu1w9`，**不是 16 进制**，旧正则 `^[0-9a-fA-F]*$` 会误拒。
+
+---
+
+## 3. 根因分析
+
+| 编号 | 根因 | 位置 |
+| --- | --- | --- |
+| RC1 | `igneous` 只允许 16 进制，且被强制转小写 | [Client-User.cs](ExClient/Client-User.cs) `LogOnAsync`；[LogOnDialog.xaml](ExViewer/Views/LogOnDialog.xaml#L87-L94)；[LogOnDialog.xaml.cs](ExViewer/Views/LogOnDialog.xaml.cs#L86-L89) |
+| RC2 | 登录页指向被 Cloudflare 保护的论坛站，EdgeHTML WebView 无法过挑战；表单 POST 也被拦 | [Client-User.cs](ExClient/Client-User.cs#L15-L17) + `LogOnDialog` |
+| RC3 | `ResetExCookieAsync` 假设「访问里站就能拿到 igneous」，现在只会拿到 `mystery`，随后空响应被当成成功 | [Client-User.cs](ExClient/Client-User.cs#L79-L88) |
+| RC4 | 登录成功判定只看本地 cookie 是否存在，不校验服务端是否真的认账 | [Client-User.cs](ExClient/Client-User.cs#L19-L21) |
+| RC5 | 空响应 / 熊猫图 / `mystery` 没有转成可读错误，异常直接抛到 UI（出现 HRESULT 文本缺失等提示） | [MyHttpClient.cs](ExClient/Internal/MyHttpClient.cs#L26-L46) |
+| RC6 | 启动时 `NeedLogOn` 在应用设置（是否访问里站）应用之前计算，里站模式无法在启动阶段要求 igneous | [SplashControl.xaml.cs](ExViewer/Views/SplashControl.xaml.cs#L167-L208)；[SettingCollection.cs](ExViewer/Settings/SettingCollection.cs#L54-L59) |
+
+---
+
+## 4. 方案总览
+
+原则：**先让 Cookie 登录稳定可用（P0），再处理网页登录（P1），最后做体验与兼容性收尾（P2/P3）。**
+
+### M0 规划与基线（本文件）
+- [x] 明确根因与证据
+- [ ] 建立构建/验证方式（本地无 VS/MSBuild，见 §8）
+
+### M1 Cookie 登录修复（P0，解决 S2/S3/S4、issue #180）
+改动点：
+
+1. `ExClient/Client-User.cs`
+   - 新增 `IsValidIgneous`：接受 `[0-9A-Za-z_-]{1,128}`，拒绝 `null/空/mystery/deleted`。
+   - `LogOnAsync`：不再 `ToLowerInvariant()`；接受非 16 进制；`mystery/deleted` 视为无效。
+   - 同时把 `ipb_member_id` / `ipb_pass_hash` 写入 `e-hentai.org` 与 `exhentai.org`（对齐绿 E/白 E 做法）。
+   - 有 `igneous` 时写入两域；无 `igneous` 且目标为里站时抛出明确的本地化错误。
+   - 登录后做**服务端校验**：
+     - 主站：请求 `home.php`，若页面含 `ipb_login_form` 或跳到 `bounce_login` → 凭据无效。
+     - 里站：请求 `exhentai.org/`，若为空响应 / `igneous=mystery` / kokomade → igneous 无效或过期。
+   - `ResetExCookieAsync` 已删除：它假设「访问里站就能拿到 igneous」，但现在只会拿到 `mystery`，保留只会掩盖错误。
+   - `NeedLogOn`：当 `Host == ExHentai` 时要求有效 igneous。
+2. `ExViewer/Views/LogOnDialog.xaml`
+   - igneous 输入框正则改为 `^[0-9A-Za-z_-]*$`。
+   - 文案标注「里站必填」。
+3. `ExViewer/Views/LogOnDialog.xaml.cs`
+   - `CanLogOn` 放松 igneous 校验；保留 `ipb_pass_hash` 32 位 hex 校验。
+   - 登录里站但未填 igneous 时，给出可读提示，不再走 `ResetExCookieAsync`。
+   - `injectOtherPage` 一并读取 `igneous`（若 WebView 上下文可读）。
+4. `ExClient/Strings/*/Resources.resjson`
+   - 新增：`IgneousRequired`、`IgneousInvalid`、`WrongAccountInfo`（已有）等提示；四种语言同步。
+5. `ExClient/Internal/MyHttpClient.cs`
+   - 将空响应、`igneous=mystery`、`0x80072EFD` 等网络/HRESULT 转成可读文案。
+6. `ExViewer/Views/SplashControl.xaml.cs`
+   - 在 `NeedLogOn` 判定前应用 `SettingCollection.Apply()`，使里站模式启动即校验 igneous。
+
+验收：
+- 仅填 `ipb_member_id` + `ipb_pass_hash` + 新格式 `igneous` → 登录成功，里站可打开。
+- 里站模式不填 igneous → 明确提示，而不是连接错误。
+- 错误 passhash → 提示凭据错误，而不是「无法与服务器建立连接」。
+- 旧格式（16 进制）igneous 仍被接受。
+
+### M2 网页登录修复（P1，解决 S1）
+方案：**用 WinUI 2 的 `WebView2`（Chromium）替换 EdgeHTML `WebView`**，仅用于登录对话框。
+
+依据：
+- 项目已引用 `Microsoft.UI.Xaml 2.8.6`，其中包含 `Microsoft.UI.Xaml.Controls.WebView2`，无需新增 NuGet 包。
+- WebView2 运行时在本机已安装；Win10 1803+ / Win11 通常随 Edge 提供。
+- Chromium 可正常完成 Cloudflare 挑战，登录后可直接读取 HttpOnly cookie（`CoreWebView2.CookieManager.GetCookiesAsync`）。
+
+改动点：
+1. `LogOnDialog.xaml`：`WebView` → `muxc:WebView2`。
+2. `LogOnDialog.xaml.cs`：
+   - `EnsureCoreWebView2Async()` 后导航 `https://e-hentai.org/bounce_login.php`（或论坛登录页）。
+   - 用 `NavigationCompleted` / `CoreWebView2.DOMContentLoaded` 替代 `DOMContentLoaded`。
+   - 用 `ExecuteScriptAsync` 替代 `InvokeScriptAsync`。
+   - 登录完成后从 `e-hentai.org`、`exhentai.org`、`forums.e-hentai.org` 读取 cookie，交给 `Client.LogOnAsync` 完成落库。
+   - 若 WebView2 运行时缺失：回退到旧 `WebView`，并提示“网页登录不可用，请使用 Cookie 登录”。
+3. 资源文案：新增 WebView2 初始化失败、Cloudflare 拦截提示。
+
+验收：
+- 网页登录可显示登录表单并完成登录。
+- 登录后里站可直接访问（前提是浏览器会话下发了 igneous）。
+- 无 WebView2 运行时时有明确回退提示，不崩溃。
+
+风险：WebView2 会增加包体/运行时依赖；若 CI 构建失败或运行时兼容性差，保留旧 WebView + Cookie 登录主路径（M2 可回滚，不影响 M1）。
+
+### M3 体验与稳健性（P2）
+- 里站访问失败时统一提示「igneous 已过期，请重新用 Cookie 登录」。
+- 设置页/账号页增加「刷新 igneous」入口（若可行）；否则明确说明需重新登录获取。
+- 启动时对过期 cookie 做一次轻量校验，失败不阻塞启动。
+- 复查 issue #179/#181 等近期 bug 是否由同一批 DOM/接口变更引起（按需，不扩大范围）。
+
+### M4 构建与发布验证（P2）
+- CI（GitHub Actions）四架构构建通过。
+- 产物安装后按 §5 测试矩阵回归。
+- 更新 README/Release Notes，说明新的登录方式。
+
+---
+
+## 5. 测试矩阵
+
+| 场景 | 输入 | 期望 |
+| --- | --- | --- |
+| T1 主站 Cookie 登录 | member + passhash，无 igneous | 成功，可浏览 e-hentai |
+| T2 里站 Cookie 登录 | member + passhash + 新格式 igneous | 成功，可浏览 exhentai |
+| T3 里站缺 igneous | member + passhash | 明确提示需要 igneous |
+| T4 igneous 错误/过期 | 有效 member + 错误 igneous | 提示 igneous 无效，可重试 |
+| T5 passhash 错误 | 有效 member + 错误 hash | 提示凭据错误 |
+| T6 旧格式 igneous | 16 进制旧值 | 正常接受 |
+| T7 网页登录 | 论坛账号密码 | WebView2 内完成登录并落库 |
+| T8 无 WebView2 运行时 | 移除运行时 | 回退提示，不崩溃 |
+| T9 启动即里站模式 | VisitEx=true + 过期 igneous | 启动时要求重新登录 |
+| T10 网络异常 | 断网/代理 | 可读网络错误，不出现 HRESULT 文本缺失 |
+
+---
+
+## 6. 风险与回滚
+
+| 风险 | 影响 | 应对 |
+| --- | --- | --- |
+| 本地无 MSBuild/VS，无法编译验证 | 改动可能引入编译错误 | 依赖 GitHub Actions；每次推送前做静态检查；必要时请用户安装 VS 构建工具 |
+| WebView2 在某些 Win10 环境不可用 | 网页登录回退 | M2 做运行时检测 + 旧 WebView 回退 |
+| 服务端继续变更 | 新格式再次失效 | 校验逻辑集中到 `Client-User.cs`，便于单点修改；错误文案区分“凭据错误/igneous 过期/网络错误” |
+| 修改 `NeedLogOn` 影响老用户 | 启动被要求重新登录 | 只在里站模式要求 igneous；主站模式保持原行为 |
+| 误把测试 cookie 提交 | 账号泄露 | 测试 cookie 只存在于本地命令历史；文档与代码不写入 |
+
+回滚：每个里程碑独立提交；M2 可单独 revert，不影响 M1。
+
+---
+
+## 7. Issue 结论
+
+### #180（igneous 校验）
+- **确认是 bug，M1 修复。**
+- 服务端 igneous 已变为大小写敏感的字母数字串；旧正则和强制小写都会破坏登录。
+- 同时补上 `mystery/deleted` 的识别，避免“假登录”。
+
+### #182（最低版本 17763 → 15063/14393）
+- **暂不实现，建议关闭/说明。**
+- 事实：`TargetPlatformMinVersion` 在 2022-11-04 的 `ba8202f`（升级 WinUI 2.5 → 2.8、增加 ARM64）中从 `16299` 提到 `17763`。
+- WinUI 2.8 的最低支持系统就是 17763；要降到 15063/14393 必须整体降级 WinUI 与相关控件，且与本计划要用的 `WebView2`（要求 WinUI ≥2.6 / Win10 1803+）冲突。
+- 15063/14393 对应 Windows 10 Mobile / 早期桌面版本，均已停止支持；为它们牺牲现代登录修复不划算。
+- 结论：维持 17763；在 issue 中给出技术原因。若未来确需支持，单独立项做“低版本构建分支”。
+
+---
+
+## 8. 构建与验证方式
+
+本机现状（2026-10-18）：
+- `C:\Program Files (x86)\Microsoft Visual Studio\18` 为空目录，无 `MSBuild.exe` / `vswhere.exe`。
+- 无 .NET SDK（`dotnet` 不可用）。
+- Windows SDK 存在（`10.0.14393.0` ~ `10.0.26100.0`），但 UWP XAML targets 随 VS 安装，无法单独构建。
+
+因此：
+1. **编译验证走 GitHub Actions**（`.github/workflows/ci.yml`，四架构）。需要把改动推到 fork 后触发。
+2. 本地只做静态检查 + 服务端行为探测（本文件 §2 的方法）。
+3. 若需要本地构建，安装 “Visual Studio Build Tools + UWP 工作负载” 后再执行：
+   ```powershell
+   msbuild ExViewer.sln /p:Configuration=Release /p:Platform=x64
+   ```
+
+---
+
+## 9. 当前进度
+
+- [x] 克隆 fork，确认基线 `eee88b3`
+- [x] 完成服务端行为探测（F1–F9）
+- [x] 完成根因定位（RC1–RC6）
+- [x] 输出本计划
+- [x] M1 Cookie 登录修复（代码已改完，等待编译/真机验证）
+- [x] M2 网页登录切换到 WebView2（代码已改完，等待编译/真机验证）
+- [x] M3 启动流程里站模式校验、错误文案（已完成基础部分）
+- [ ] M4 CI 构建与回归
+- [ ] #182 结论回帖
+
+### 变更清单（M1 + M2）
+
+| 文件 | 改动 |
+| --- | --- |
+| `ExClient/Client-User.cs` | igneous 新格式校验；双域写入 cookie；登录后服务端校验；删除 `ResetExCookieAsync`；里站模式要求 igneous |
+| `ExClient/Internal/MyHttpClient.cs` | 移除自动重置 ex cookie 的调用，避免掩盖错误 |
+| `ExClient/Strings/{en,zh-hans,zh-hant,ko}/Resources.resjson` | 新增 `IgneousInvalid`、`IgneousRequired` |
+| `ExViewer/Views/LogOnDialog.xaml` | igneous 正则放宽；`WebView` → `muxc:WebView2` |
+| `ExViewer/Views/LogOnDialog.xaml.cs` | 新校验、错误映射、WebView2 初始化/导航完成/cookie 读取、WebView2 缺失回退 |
+| `ExViewer/Views/SplashControl.xaml.cs` | `NeedLogOn` 判定前应用设置，里站模式启动即校验 igneous |
+| `ExViewer/Strings/{en,zh-hans,zh-hant,ko}/Resources.resJson` | igneous 提示文案、`NetworkError`、`WebView2Unavailable` |
+
+### 待验证（M4）
+
+- [ ] CI 四架构构建通过（重点：`Microsoft.Web.WebView2.Core` 引用、XAML `muxc:WebView2`）
+- [ ] WebView2 能否在 `ContentDialog` 中正常渲染（airspace 风险）
+- [ ] 网页登录后能否从 WebView2 拿到 igneous
+- [ ] T1–T10 真机回归
+
+### 决策日志
+
+| 日期 | 决策 | 原因 |
+| --- | --- | --- |
+| 2026-10-18 | 优先修 Cookie 登录，网页登录后置 | Cookie 登录是唯一不依赖 Cloudflare 挑战的可靠路径 |
+| 2026-10-18 | 里站模式强制要求 igneous | 服务端只返回 `mystery`，无法自动派生 |
+| 2026-10-18 | #182 暂不实现 | 与 WinUI 2.8 / WebView2 冲突，目标系统已停止支持 |

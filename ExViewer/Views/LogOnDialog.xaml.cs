@@ -1,9 +1,11 @@
-﻿using ExClient;
+using ExClient;
 using ExViewer.Controls;
 using Microsoft.Toolkit.Uwp.UI.Extensions;
+using Microsoft.Web.WebView2.Core;
 using Opportunity.MvvmUniverse;
 using Opportunity.MvvmUniverse.Commands;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -55,8 +57,8 @@ namespace ExViewer.Views
                     }
                     catch (Exception ex)
                     {
-                        Reset();
-                        ErrorMsg = ex.Message;
+                        Succeed = false;
+                        ErrorMsg = getErrorMessage(ex);
                         ShowErrorMsg = true;
                         Telemetry.LogException(ex);
                         return;
@@ -86,7 +88,7 @@ namespace ExViewer.Views
             public bool CanLogOn => !Succeed
                 && long.TryParse(MemberId, out _)
                 && Regex.IsMatch(PassHash ?? "", @"^[0-9a-fA-F]{32}$")
-                && Regex.IsMatch(Igneous ?? "", @"^[0-9a-fA-F]*$");
+                && Regex.IsMatch(Igneous ?? "", @"^[0-9A-Za-z_-]*$");
 
             [DebuggerBrowsable(DebuggerBrowsableState.Never)]
             private bool _Succeed;
@@ -130,7 +132,7 @@ namespace ExViewer.Views
 
             [DebuggerBrowsable(DebuggerBrowsableState.Never)]
             private string _ErrorMsg;
-            public string ErrorMsg { get => _ErrorMsg; private set => Set(ref _ErrorMsg, value); }
+            public string ErrorMsg { get => _ErrorMsg; set => Set(ref _ErrorMsg, value); }
 
             [DebuggerBrowsable(DebuggerBrowsableState.Never)]
             private bool _ShowErrorMsg;
@@ -152,6 +154,19 @@ namespace ExViewer.Views
 
         private readonly VMData VM = new VMData();
 
+        private static string getErrorMessage(Exception ex)
+        {
+            switch (ex.HResult)
+            {
+            case unchecked((int)0x80072EFD): // ERROR_INTERNET_CANNOT_CONNECT
+            case unchecked((int)0x80072EE7): // ERROR_INTERNET_NAME_NOT_RESOLVED
+            case unchecked((int)0x80072EE2): // ERROR_INTERNET_TIMEOUT
+                return Strings.Resources.Views.LogOnDialog.NetworkError;
+            default:
+                return string.IsNullOrEmpty(ex.Message) ? ex.GetType().Name : ex.Message;
+            }
+        }
+
         public bool Succeed => VM.Succeed;
 
         private void btnUseCookie_Click(object sender, RoutedEventArgs e)
@@ -166,14 +181,51 @@ namespace ExViewer.Views
             reset();
         }
 
+        private bool webView2Initialized;
+        private bool cookieLogOnTried;
+        private bool exVisited;
+
+        private static readonly string[] cookieSources =
+        {
+            "https://forums.e-hentai.org/",
+            "https://e-hentai.org/",
+            "https://exhentai.org/",
+        };
+
         private async void reset()
         {
             VM.Reset();
 
             VM.ShowErrorMsg = false;
-            wv.NavigateToString("");
+            cookieLogOnTried = false;
+            exVisited = false;
+            if (VM.UseCookieLogOn)
+                return;
+            if (!await ensureWebViewAsync())
+                return;
+            wv.CoreWebView2.Navigate("about:blank");
             await Dispatcher.YieldIdle();
-            wv.Navigate(Client.LogOnUri);
+            wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
+        }
+
+        private async Task<bool> ensureWebViewAsync()
+        {
+            if (webView2Initialized)
+                return true;
+            try
+            {
+                await wv.EnsureCoreWebView2Async();
+                webView2Initialized = true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Telemetry.LogException(ex);
+                VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.WebView2Unavailable;
+                VM.UseCookieLogOn = true;
+                VM.ShowErrorMsg = true;
+                return false;
+            }
         }
 
         private async Task injectLogOnPage()
@@ -187,61 +239,62 @@ namespace ExViewer.Views
                 u = escape(pass.UserName);
                 p = escape(pass.Password);
             }
-            await wv.InvokeScriptAsync("eval", new[] { $@"
+            await wv.ExecuteScriptAsync($@"
 (function ()
 {{
     var nL = document.LOGIN;
     if(!nL) return;
-	var nU = nL.UserName;
+    var nU = nL.UserName;
     if(!nU) return;
     var nP = nL.PassWord;
     if(!nP) return;
     nU.value = '{u}';
     nP.value = '{p}';
-    nL.onsubmit = function(ev)
+    nL.addEventListener('submit', function ()
     {{
-        var ret = ValidateForm();
-        if (ret)
-        {{
-            window.external.notify(nU.value + '\n' + nP.value);
-        }}
-        return ret;
-    }}
+        window.chrome.webview.postMessage(nU.value + '\n' + nP.value);
+    }});
 }})();
-" });
+");
             string escape(string value) => value.Replace(@"\", @"\\").Replace("'", @"\'");
         }
 
-        private async Task injectOtherPage()
+        private async Task tryLogOnFromCookiesAsync()
         {
-            if (VM.LogOn.IsExecuting)
+            if (cookieLogOnTried || VM.LogOn.IsExecuting)
                 return;
 
-            var r = await wv.InvokeScriptAsync("eval", new[] { @"
-(function ()
-{
-    function getCookie(c_name)
-    {
-        if (document.cookie.length <= 0) return '';
-        var c_start = document.cookie.indexOf(c_name + '=');
-        if (c_start < 0) return '';
-        c_start = c_start + c_name.length + 1;
-        var c_end = document.cookie.indexOf(';', c_start);
-        if (c_end == -1) c_end = document.cookie.length;
-        return unescape(document.cookie.substring(c_start, c_end));
-    }
-    return (getCookie('ipb_member_id') + '\n' + getCookie('ipb_pass_hash'));
-})();
-" });
-            var data = r.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            if (data.Length != 2)
+            var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var source in cookieSources)
             {
+                var list = await wv.CoreWebView2.CookieManager.GetCookiesAsync(source);
+                foreach (var cookie in list)
+                    cookies[cookie.Name] = cookie.Value;
+            }
+
+            if (!cookies.TryGetValue("ipb_member_id", out var memberId)
+                || !cookies.TryGetValue("ipb_pass_hash", out var passHash)
+                || string.IsNullOrWhiteSpace(memberId)
+                || string.IsNullOrWhiteSpace(passHash))
+                return;
+
+            cookies.TryGetValue("igneous", out var igneous);
+
+            // Without igneous, let the browser visit exhentai once; the site may
+            // hand out a fresh one for the current session.
+            if (string.IsNullOrWhiteSpace(igneous)
+                && Client.Current.Host == HostType.ExHentai
+                && !exVisited)
+            {
+                exVisited = true;
+                wv.CoreWebView2.Navigate("https://exhentai.org/");
                 return;
             }
-            VM.MemberId = data[0];
-            VM.PassHash = data[1];
-            VM.Igneous = "";
-            wv.NavigateToString("");
+
+            cookieLogOnTried = true;
+            VM.MemberId = memberId;
+            VM.PassHash = passHash;
+            VM.Igneous = igneous ?? "";
             VM.LogOn.Execute();
         }
 
@@ -262,29 +315,29 @@ namespace ExViewer.Views
             reset();
         }
 
-        private async void wv_DOMContentLoaded(WebView sender, WebViewDOMContentLoadedEventArgs args)
+        private async void wv_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
         {
-            Debug.WriteLine(args.Uri?.ToString() ?? "local string", "WebView");
-            if (args.Uri is null)
+            if (!args.IsSuccess)
+            {
+                showErrorMsgInWv($"{args.WebErrorStatus} ({(int)args.WebErrorStatus})", sender.Source?.ToString() ?? "");
+                return;
+            }
+
+            var uri = sender.Source;
+            Debug.WriteLine(uri?.ToString() ?? "local string", "WebView2");
+            if (uri is null || !uri.Host.EndsWith("hentai.org", StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (args.Uri == Client.LogOnUri)
-            {
+            if (uri.AbsoluteUri.StartsWith(Client.LogOnUri.AbsoluteUri, StringComparison.Ordinal))
                 await injectLogOnPage();
-            }
-            else if (args.Uri.ToString().StartsWith(Client.LogOnUri.ToString()))
-            {
-                await injectLogOnPage();
-                await injectOtherPage();
-            }
-            else if (args.Uri.Host == Client.LogOnUri.Host)
-            {
-                await injectOtherPage();
-            }
+
+            await tryLogOnFromCookiesAsync();
         }
 
         private void showErrorMsgInWv(string line1, string line2)
         {
+            if (!webView2Initialized)
+                return;
             wv.NavigateToString($@"
 <html>
 <head>
@@ -302,25 +355,16 @@ namespace ExViewer.Views
 
         }
 
-        private void wv_NavigationFailed(object sender, WebViewNavigationFailedEventArgs e)
+        private void wv_WebMessageReceived(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
         {
-            showErrorMsgInWv($"{System.Net.WebUtility.HtmlEncode(e.WebErrorStatus.ToString())} ({(int)e.WebErrorStatus})", e.Uri.ToString());
-        }
-
-        private void wv_ScriptNotify(object sender, NotifyEventArgs e)
-        {
-            var data = e.Value.Split(new[] { '\n' }, StringSplitOptions.None);
-            if (e.CallingUri.ToString().StartsWith(Client.LogOnUri.ToString()))
-            {
-                if (data.Length != 2)
-                {
-                    return;
-                }
-
-                VM.UserName = data[0];
-                VM.Password = data[1];
+            var value = args.WebMessageAsString;
+            if (string.IsNullOrEmpty(value))
                 return;
-            }
+            var data = value.Split(new[] { '\n' }, StringSplitOptions.None);
+            if (data.Length != 2)
+                return;
+            VM.UserName = data[0];
+            VM.Password = data[1];
         }
 
         protected override Size MeasureOverride(Size availableSize)

@@ -1,4 +1,4 @@
-﻿{
+{
   "$TagInBlackList": "The tag \"{tag}\" cannot be used. You are attempting to upvote or add a tag that is blocked or blacklisted.",
   "$TagNeedNamespace1": "The tag \"{tag}\" is not allowed. Use \"{tag1}\".",
   "$TagNeedNamespace2": "The tag \"{tag}\" is not allowed. Use \"{tag1}\" or \"{tag2}\".",
@@ -23,6 +23,8 @@
   "ExpungedTorrent": "This torrent has been expunged.",
   "GalleryRemoved": "This gallery has been removed or is unavailable.",
   "GalleryReviewing": "This gallery has been locked for review. Please check back later.",
+  "IgneousInvalid": "The \"igneous\" cookie is invalid or has expired. Get a new one from your browser and log in again.",
+  "IgneousRequired": "The \"igneous\" cookie is required to access ExHentai. Log in via a browser and copy the \"igneous\" cookie value.",
   "InvalidNamespace": "Invalid namespace of tags.",
   "IPBannedOfPageLoad": "Your IP address has been temporarily banned for excessive pageloads which indicates that you are using automated mirroring/harvesting software.",
   "Kokomade": "We've got the kokomade from exhentai, this probably means that current account dose not have permission for exhentai.",

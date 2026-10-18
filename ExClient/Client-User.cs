@@ -1,4 +1,4 @@
-﻿using ExClient.Forums;
+using ExClient.Forums;
 using ExClient.Internal;
 
 using System;
@@ -18,7 +18,8 @@ namespace ExClient
 
         public bool NeedLogOn
             => UserId <= 0
-            || PassHash is null;
+            || PassHash is null
+            || (Host == HostType.ExHentai && !HasValidIgneous);
 
         internal void CheckLogOn()
         {
@@ -65,26 +66,42 @@ namespace ExClient
             CookieManager.SetCookie(new HttpCookie(name, Domains.Eh, "/") { Value = value, Expires = DateTimeOffset.Now.AddYears(1) });
         }
 
-        private void _SetCookieEx(string name, string value)
-        {
-            CookieManager.SetCookie(new HttpCookie(name, Domains.Ex, "/") { Value = value, Expires = DateTimeOffset.Now.AddYears(1) });
-        }
-
         private void _SetCookieAll(string name, string value)
         {
             CookieManager.SetCookie(new HttpCookie(name, Domains.Eh, "/") { Value = value, Expires = DateTimeOffset.Now.AddYears(1) });
             CookieManager.SetCookie(new HttpCookie(name, Domains.Ex, "/") { Value = value, Expires = DateTimeOffset.Now.AddYears(1) });
         }
 
-        internal async Task ResetExCookieAsync()
-        {
-            foreach (var item in CookieManager.GetCookies(DomainProvider.Ex.RootUri))
-                CookieManager.DeleteCookie(item);
+        internal bool HasValidIgneous
+            => IsValidIgneousValue(GetExCookieValue(CookieNames.Igneous));
 
-            await HttpClient.GetAsync(DomainProvider.Ex.RootUri, HttpCompletionOption.ResponseHeadersRead, true);
-            _CopyCookie(CookieNames.SettingsKey);
-            _CopyCookie(CookieNames.HathPerks);
-            _SetDefaultCookies();
+        internal static bool IsValidIgneousValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+            value = value.Trim();
+            if (value.Length > 128)
+                return false;
+            foreach (var c in value)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
+                    return false;
+            }
+            switch (value.ToLowerInvariant())
+            {
+            case "mystery":
+            case "deleted":
+            case "null":
+                return false;
+            default:
+                return true;
+            }
+        }
+
+        private string GetExCookieValue(string name)
+        {
+            return CookieManager.GetCookies(DomainProvider.Ex.RootUri)
+                .SingleOrDefault(c => c.Name == name)?.Value;
         }
 
         public LogOnInfo GetLogOnInfo()
@@ -162,7 +179,7 @@ namespace ExClient
         /// </summary>
         /// <param name="userID">cookie with name ipb_member_id</param>
         /// <param name="passHash">cookie with name ipb_pass_hash</param>
-        /// <param name="igneous">cookie with name igneous (can be null)</param>
+        /// <param name="igneous">cookie with name igneous (required for ExHentai)</param>
         public async Task LogOnAsync(long userID, string passHash, string igneous = null)
         {
             if (userID <= 0)
@@ -174,37 +191,32 @@ namespace ExClient
             if (passHash.Length != 32 || !passHash.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
                 throw new ArgumentException("Should be 32 hex chars.", nameof(passHash));
 
-            if (igneous != null)
-            {
-                igneous = igneous.Trim().ToLowerInvariant();
-                if (string.IsNullOrEmpty(igneous))
-                    igneous = null;
-                else if (!igneous.All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-                    throw new ArgumentException("Should be hex string or null.", nameof(igneous));
-            }
+            igneous = igneous?.Trim();
+            if (string.IsNullOrEmpty(igneous) || !IsValidIgneousValue(igneous))
+                igneous = null;
+
+            if (igneous is null && Host == HostType.ExHentai)
+                throw new InvalidOperationException(LocalizedStrings.Resources.IgneousRequired);
 
             var cookieBackUp = GetLogOnInfo();
             ClearLogOnInfo();
 
-            // add log on info to eh
-            _SetCookieEh(CookieNames.MemberID, userID.ToString());
-            _SetCookieEh(CookieNames.PassHash, passHash);
+            // Log on info is shared by both domains.
+            _SetCookieAll(CookieNames.MemberID, userID.ToString());
+            _SetCookieAll(CookieNames.PassHash, passHash);
+            if (igneous != null)
+            {
+                _SetCookieAll(CookieNames.Igneous, igneous);
+            }
+            else
+            {
+                // Never keep a stale `mystery` cookie around.
+                CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Ex, "/"));
+            }
 
             try
             {
-                // add log on info to ex
-                if (!string.IsNullOrEmpty(igneous))
-                {
-                    // with igneous, set cookies directly
-                    _SetCookieEx(CookieNames.Igneous, igneous);
-                }
-                else
-                {
-                    // otherwise, visit ex once to get them
-                    await ResetExCookieAsync();
-                }
-                _CopyCookie(CookieNames.PassHash);
-                _CopyCookie(CookieNames.MemberID);
+                await VerifyLogOnAsync();
 
                 try
                 {
@@ -213,13 +225,32 @@ namespace ExClient
                 catch { }
 
                 if (NeedLogOn)
-                    throw new ArgumentException("Invalid log on info.");
+                    throw new InvalidOperationException(LocalizedStrings.Resources.WrongAccountInfo);
             }
             catch (Exception)
             {
                 RestoreLogOnInfo(cookieBackUp);
                 throw;
             }
+        }
+
+        private static readonly Uri _HomeUri = new Uri(DomainProvider.Eh.RootUri, "home.php");
+
+        private async Task VerifyLogOnAsync()
+        {
+            // Invalid credentials redirect to bounce_login.php, which contains the login form.
+            var home = await HttpClient.GetDocumentAsync(_HomeUri);
+            if (home.DocumentNode.SelectSingleNode("//form[@name='ipb_login_form']") != null)
+                throw new InvalidOperationException(LocalizedStrings.Resources.WrongAccountInfo);
+
+            if (Host != HostType.ExHentai)
+                return;
+
+            // Without a valid igneous, exhentai answers with an empty page and
+            // `Set-Cookie: igneous=mystery`.
+            var ex = await HttpClient.GetDocumentAsync(DomainProvider.Ex.RootUri);
+            if (ex.DocumentNode.SelectSingleNode("//html") is null || !HasValidIgneous)
+                throw new InvalidOperationException(LocalizedStrings.Resources.IgneousInvalid);
         }
 
         private static readonly Uri _HathperksUri = new Uri(DomainProvider.Eh.RootUri, "hathperks.php");

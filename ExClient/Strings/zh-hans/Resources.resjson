@@ -1,4 +1,4 @@
-﻿{
+{
   "$TagInBlackList": "无法使用标签“{tag}”，此标签已经被加入禁止列表。",
   "$TagNeedNamespace1": "不允许使用标签“{tag}”。改用“{tag1}”。",
   "$TagNeedNamespace2": "不允许使用标签“{tag}”。改用“{tag1}”或“{tag2}”。",
@@ -25,6 +25,8 @@
   "GalleryReviewing": "此画廊正在审查中，请稍后再试。",
   "InvalidNamespace": "无效的标签命名空间。",
   "IPBannedOfPageLoad": "由于过多的页面加载，您的 IP 地址已被暂时禁止，这表示您正在使用自动镜像/收集软件。",
+  "IgneousInvalid": "“igneous” cookie 无效或已过期。请从浏览器获取新的值后重新登录。",
+  "IgneousRequired": "访问 ExHentai 需要填写“igneous” cookie。请先在浏览器登录，然后复制“igneous”的值。",
   "Kokomade": "从 ExHentai 返回了ここまで图，这可能意味着当前用户没有访问 ExHentai 的权限。",
   "OnlyIpv4": "仅支持 IPv4 地址。",
   "RemoveFromFavorites": "从收藏中移除",

@@ -1,4 +1,4 @@
-﻿using ExClient;
+using ExClient;
 using ExClient.Api;
 using ExClient.Forums;
 using ExClient.Services;
@@ -169,9 +169,10 @@ namespace ExViewer.Views
             var loadingTask = Task.Run(async () =>
             {
                 var client = Client.Current;
+                // Apply settings first, so that Host reflects VisitEx when NeedLogOn is evaluated.
+                SettingCollection.Current.Apply();
                 if (!client.NeedLogOn)
                 {
-                    SettingCollection.Current.Apply();
                     var initSearchTask = WatchedVM.InitAsync();
                     var waitTime = 0;
                     while (waitTime < 7000)

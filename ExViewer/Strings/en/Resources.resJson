@@ -1,4 +1,4 @@
-﻿{
+{
   "AppDescription": "E-Viewer is a client for e-hentai.org and exhentai.org.",
   "AppDisplayName": "E-Viewer",
   "Controls": {
@@ -311,15 +311,17 @@
       "ToplistsHeaderTextBlock/Text": "Toplists"
     },
     "LogOnDialog": {
-      "IgneousTextBox/Header": "Cookie value of \"igneous\" (optional)",
+      "IgneousTextBox/Header": "Cookie value of \"igneous\" (required for ExHentai)",
       "LogOnButtonText": "Log on",
       "MemberIdTextBox/Header": "Cookie value of \"ipb_member_id\"",
+      "NetworkError": "Cannot connect to the server. Check your network, proxy or hosts settings.",
       "PassHashTextBox/Header": "Cookie value of \"ipb_pass_hash\"",
       "RegisterHyperlinkButton/Content": "Register",
       "ResetButtonText": "Reset",
       "TitleTextBlock/Text": "LOG ON",
       "UseCookieButton/Content": "Use cookie log on",
-      "UseWebpageButton/Content": "Use webpage log on"
+      "UseWebpageButton/Content": "Use webpage log on",
+      "WebView2Unavailable": "WebView2 Runtime is not available. Install the Microsoft Edge WebView2 Runtime, or log in with cookies."
     },
     "PopularPage": {
       "LoadingMoreTextBlock/Text": "Loading popular galleries…",
