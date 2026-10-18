@@ -220,7 +220,7 @@ issue 对应关系：
 - [x] 完成根因定位（RC1–RC6）
 - [x] 输出本计划
 - [x] M1 Cookie 登录修复（已通过真机验证）
-- [x] M2 网页登录切换到 WebView2（代码完成；受代理/网络环境限制，`Unknown (0)` 待环境侧确认）
+- [x] M2 网页登录切换到 WebView2（Cloudflare 验证通过，登录表单已加载；待输入账号密码完成端到端）
 - [x] M3 启动流程里站模式校验、错误文案（已完成基础部分）
 - [x] M4 CI 构建通过（x86 / x64 / arm / arm64 全部成功）
 - [ ] 真机回归（T1、T3–T10）与 #182 结论回帖
@@ -260,7 +260,7 @@ issue 对应关系：
 | T2 Cookie 登录（EH + igneous 一并填写） | 通过 | 登录对话框关闭，主界面正常加载；cookie 同时写入两域 |
 | 里站访问（设置中开启 ExHentai） | 通过 | “热门”页成功加载 exhentai 画廊列表（标题、页数、上传者、时间） |
 | 首启默认模式 | 通过 | 新安装后登录框默认显示 Cookie 表单，不再先初始化 WebView2 |
-| M2 网页登录 | 未通过（环境相关） | WebView2 能初始化并触发导航，但 `NavigationCompleted` 返回 `WebErrorStatus.Unknown (0)`，显示错误页；URL 正确为 `https://forums.e-hentai.org/index.php?act=Login` |
+| M2 网页登录 | 通过（页面加载） | 2024.11.3.3 修正瞬态导航失败后，Cloudflare 安全验证自动通过，成功加载 E-Hentai Forums 登录表单；等待输入论坛账号密码完成端到端 |
 
 补充观察：
 
@@ -270,15 +270,21 @@ issue 对应关系：
   但 WebView2 的独立网络栈可能没有走同一条代理路径（或独立 DNS/DoH 影响分流）。
   按用户要求，不再检查代理配置本身；此项作为环境前置条件记录。
 - 网页登录已不是默认路径，且失败时会显示可读错误；Cookie 登录不受影响。
-- 2024.11.3.2 增加 `privateNetworkClientServer` 并重测：WebView2 仍返回 `Unknown (0)`，
-  可排除 UWP 网络能力缺失；剩余原因是代理/TUN 未覆盖 WebView2 流量（或独立 DNS/DoH 影响分流）。
+- 2024.11.3.2 增加 `privateNetworkClientServer` 并重测：在 TUN 模式下 WebView2 仍返回 `Unknown (0)`；
+  切换为系统代理后可以到达 Cloudflare 页面。
+- 2024.11.3.3 修正为忽略 Cloudflare 挑战产生的瞬态导航失败（`Unknown` / `OperationCanceled` /
+  `ConnectionAborted` / `ConnectionReset`），不再用错误页覆盖认证页。窗口置于前台后，
+  Cloudflare 安全验证自动通过，成功加载 E-Hentai Forums 登录表单。
+- 注意：窗口最小化或处于后台时，WebView2 可能被节流，挑战会长时间停在“正在进行安全验证”；
+  保持登录窗口在前台即可。
 - 测试期间多次卸载重装，应用本地设置/历史被清空；最终已用测试 cookie 重新登录。
 
 下一步：
 
-1. 在代理侧确认 `msedgewebview2.exe` 的流量与浏览器一致（或临时切到可访问目标站点的节点），再重测网页登录。
-2. 若仍为 `Unknown (0)`，评估在 WebView2 侧关闭安全 DNS / 指定代理的可行性（WinUI 2 暴露的 API 有限）。
-3. 继续执行 T1、T3–T10 真机回归；网页登录失败时保持“Cookie 登录”主路径。
+1. 在网页登录表单中输入论坛账号密码，确认登录成功后 cookie 能被自动读取并关闭对话框。
+2. 保持登录窗口在前台，避免 WebView2 被后台节流导致 Cloudflare 验证长时间不通过。
+3. 继续执行 T1、T3–T10 真机回归；Cookie 登录始终可作为主路径。
+
 ### 决策日志
 
 | 日期 | 决策 | 原因 |
