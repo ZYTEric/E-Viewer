@@ -357,7 +357,15 @@ namespace ExViewer.Views
 
         private void wv_WebMessageReceived(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
         {
-            var value = args.WebMessageAsString;
+            string value;
+            try
+            {
+                value = args.TryGetWebMessageAsString();
+            }
+            catch
+            {
+                return;
+            }
             if (string.IsNullOrEmpty(value))
                 return;
             var data = value.Split(new[] { '\n' }, StringSplitOptions.None);
