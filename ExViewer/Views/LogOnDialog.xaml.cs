@@ -216,13 +216,23 @@ namespace ExViewer.Views
         }
 
         private bool cookieLogOnTried;
+        private bool cookieCheckInProgress;
         private bool exVisited;
+        private long previousUserId;
+        private string previousIgneous;
 
         private static readonly string[] cookieSources =
         {
             "https://forums.e-hentai.org/",
             "https://e-hentai.org/",
             "https://exhentai.org/",
+        };
+
+        private static readonly string[] trustedHosts =
+        {
+            "forums.e-hentai.org",
+            "e-hentai.org",
+            "exhentai.org",
         };
 
         private void reset()
@@ -239,6 +249,16 @@ namespace ExViewer.Views
                 wv.Source = Client.LogOnUri; // initializes CoreWebView2 and navigates
             else
                 wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
+        }
+
+        private static bool IsTrustedHost(string host)
+        {
+            foreach (var trusted in trustedHosts)
+            {
+                if (string.Equals(host, trusted, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private async Task injectLogOnPage()
@@ -272,74 +292,101 @@ namespace ExViewer.Views
 ");
             if (result == "true" && !keepAliveTimer.IsEnabled)
                 keepAliveTimer.Start();
-            string escape(string value) => value.Replace(@"\", @"\\").Replace("'", @"\'");
+            string escape(string value) => value
+                .Replace(@"\", @"\\")
+                .Replace("'", @"\'")
+                .Replace("\r", @"\r")
+                .Replace("\n", @"\n")
+                .Replace("\u2028", @"\u2028")
+                .Replace("\u2029", @"\u2029");
         }
 
         private async Task tryLogOnFromCookiesAsync(Uri current)
         {
-            if (cookieLogOnTried || VM.LogOn.IsExecuting)
+            if (cookieLogOnTried || cookieCheckInProgress || VM.LogOn.IsExecuting)
                 return;
 
-            // Wait until the user actually submits the form and is redirected away
-            // from the log-on page. Cookies may already exist from an older session.
-            if (current.AbsoluteUri.IndexOf("act=Login", StringComparison.OrdinalIgnoreCase) >= 0)
-                return;
-
-            var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var source in cookieSources)
+            cookieCheckInProgress = true;
+            try
             {
-                var list = await wv.CoreWebView2.CookieManager.GetCookiesAsync(source);
-                foreach (var cookie in list)
-                    cookies[cookie.Name] = cookie.Value;
+                // Wait until the user actually submits the form and is redirected away
+                // from the log-on page. Cookies may already exist from an older session.
+                if (current.AbsoluteUri.IndexOf("act=Login", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return;
+
+                var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var source in cookieSources)
+                {
+                    var list = await wv.CoreWebView2.CookieManager.GetCookiesAsync(source);
+                    foreach (var cookie in list)
+                    {
+                        // An invalid value such as `igneous=mystery` from exhentai
+                        // must not overwrite a valid value read from another domain.
+                        if (cookie.Name == "igneous"
+                            && !Client.IsValidIgneousValue(cookie.Value)
+                            && cookies.TryGetValue("igneous", out var currentIgneous)
+                            && Client.IsValidIgneousValue(currentIgneous))
+                        {
+                            continue;
+                        }
+                        cookies[cookie.Name] = cookie.Value;
+                    }
+                }
+
+                if (!cookies.TryGetValue("ipb_member_id", out var memberId)
+                    || !cookies.TryGetValue("ipb_pass_hash", out var passHash)
+                    || string.IsNullOrWhiteSpace(memberId)
+                    || string.IsNullOrWhiteSpace(passHash))
+                    return;
+
+                cookies.TryGetValue("igneous", out var igneous);
+                var igneousUsable = Client.IsValidIgneousValue(igneous);
+
+                // A web log-on cannot create a valid igneous on its own. If the app
+                // already had one for the same account before this dialog opened,
+                // reuse it.
+                if (!igneousUsable
+                    && long.TryParse(memberId, out var userId)
+                    && userId == previousUserId
+                    && Client.IsValidIgneousValue(previousIgneous))
+                {
+                    igneous = previousIgneous;
+                    igneousUsable = true;
+                }
+
+                // Without igneous, let the browser visit exhentai once; the site may
+                // hand out a fresh one for the current session.
+                if (!igneousUsable
+                    && Client.Current.Host == HostType.ExHentai
+                    && !exVisited)
+                {
+                    exVisited = true;
+                    wv.CoreWebView2.Navigate("https://exhentai.org/");
+                    return;
+                }
+
+                cookieLogOnTried = true;
+                VM.MemberId = memberId;
+                VM.PassHash = passHash;
+                VM.Igneous = igneousUsable ? igneous : "";
+
+                if (!igneousUsable && Client.Current.Host == HostType.ExHentai)
+                {
+                    // Web log-on succeeded, but this network cannot obtain a valid
+                    // igneous. Switch to the cookie form with the other cookies filled.
+                    keepAliveTimer.Stop();
+                    VM.UseCookieLogOn = true;
+                    VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.IgneousNotAvailable;
+                    VM.ShowErrorMsg = true;
+                    return;
+                }
+
+                VM.LogOn.Execute();
             }
-
-            if (!cookies.TryGetValue("ipb_member_id", out var memberId)
-                || !cookies.TryGetValue("ipb_pass_hash", out var passHash)
-                || string.IsNullOrWhiteSpace(memberId)
-                || string.IsNullOrWhiteSpace(passHash))
-                return;
-
-            cookies.TryGetValue("igneous", out var igneous);
-            var igneousUsable = Client.IsValidIgneousValue(igneous);
-
-            // A web log-on cannot create a valid igneous on its own. If the app
-            // already has one for the same account, reuse it.
-            if (!igneousUsable
-                && long.TryParse(memberId, out var userId)
-                && Client.Current.TryGetValidIgneousFor(userId, out var existing))
+            finally
             {
-                igneous = existing;
-                igneousUsable = true;
+                cookieCheckInProgress = false;
             }
-
-            // Without igneous, let the browser visit exhentai once; the site may
-            // hand out a fresh one for the current session.
-            if (!igneousUsable
-                && Client.Current.Host == HostType.ExHentai
-                && !exVisited)
-            {
-                exVisited = true;
-                wv.CoreWebView2.Navigate("https://exhentai.org/");
-                return;
-            }
-
-            cookieLogOnTried = true;
-            VM.MemberId = memberId;
-            VM.PassHash = passHash;
-            VM.Igneous = igneousUsable ? igneous : "";
-
-            if (!igneousUsable && Client.Current.Host == HostType.ExHentai)
-            {
-                // Web log-on succeeded, but this network cannot obtain a valid
-                // igneous. Switch to the cookie form with the other cookies filled.
-                keepAliveTimer.Stop();
-                VM.UseCookieLogOn = true;
-                VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.IgneousNotAvailable;
-                VM.ShowErrorMsg = true;
-                return;
-            }
-
-            VM.LogOn.Execute();
         }
 
         private void cd_Loaded(object sender, RoutedEventArgs e)
@@ -354,12 +401,32 @@ namespace ExViewer.Views
                 CloseButtonText = Strings.Resources.General.Cancel;
 
             VM.LogOnInfoBackup = Client.Current.GetLogOnInfo();
+            // Capture the previous account's igneous before the cookies are cleared;
+            // it can be reused if the web log-on cannot provide a valid one.
+            previousUserId = Client.Current.UserId;
+            previousIgneous = null;
+            Client.Current.TryGetValidIgneousFor(previousUserId, out previousIgneous);
             Client.Current.ClearLogOnInfo();
 
             reset();
         }
 
         private async void wv_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
+        {
+            try
+            {
+                await handleNavigationCompletedAsync(sender, args);
+            }
+            catch (Exception ex)
+            {
+                keepAliveTimer.Stop();
+                Telemetry.LogException(ex);
+                if (!VM.UseCookieLogOn)
+                    showErrorMsgInWv(Strings.Resources.Views.LogOnDialog.WebViewConnectionError, sender.Source?.ToString() ?? "");
+            }
+        }
+
+        private async Task handleNavigationCompletedAsync(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
         {
             if (!args.IsSuccess)
             {
@@ -389,7 +456,7 @@ namespace ExViewer.Views
 
             var uri = sender.Source;
             Debug.WriteLine(uri?.ToString() ?? "local string", "WebView2");
-            if (uri is null || !uri.Host.EndsWith("hentai.org", StringComparison.OrdinalIgnoreCase))
+            if (uri is null || !IsTrustedHost(uri.Host))
                 return;
 
             if (uri.AbsoluteUri.StartsWith(Client.LogOnUri.AbsoluteUri, StringComparison.Ordinal))
@@ -421,6 +488,11 @@ namespace ExViewer.Views
 
         private void wv_WebMessageReceived(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
         {
+            // Only accept messages posted by the forums log-on page.
+            if (!Uri.TryCreate(args.Source, UriKind.Absolute, out var source)
+                || source.Scheme != Uri.UriSchemeHttps
+                || !string.Equals(source.Host, Client.LogOnUri.Host, StringComparison.OrdinalIgnoreCase))
+                return;
             string value;
             try
             {

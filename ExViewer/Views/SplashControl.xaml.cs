@@ -116,6 +116,7 @@ namespace ExViewer.Views
             ccHided.Content = null;
             Window.Current.Content = rootControl;
             rootControl = null;
+            RootControl.RootController.FlushPendingToast();
             afterActions();
         }
 

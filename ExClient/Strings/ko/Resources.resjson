@@ -25,8 +25,6 @@
   "GalleryReviewing": "이 갤러리는 검토를 위해 잠겨 있습니다, 나중에 다시 확인해주십시오.",
   "InvalidNamespace": "태그의 네임 스페이스가 잘못되었습니다.",
   "IPBannedOfPageLoad": "자동화 된 미러링/수확 소프트웨어를 사용하고 있음을 나타내는 과도한 페이지 불러오기로 인해 IP 주소가 일시적으로 차단되었습니다.",
-  "IgneousInvalid": "\"igneous\" 쿠키가 유효하지 않거나 만료되었습니다. 브라우저에서 새 값을 받아 다시 로그인하세요.",
-  "IgneousRequired": "ExHentai에 접속하려면 \"igneous\" 쿠키가 필요합니다. 브라우저에서 로그인한 후 \"igneous\" 쿠키 값을 복사하세요.",
   "Kokomade": "우리는 exhentai에서 kokomade를 얻었습니다. 이것은 아마도 현재 계정에 exhentai에 대한 권한이 없다는 것을 의미합니다.",
   "OnlyIpv4": "IPv4 주소만 지원됩니다.",
   "RemoveFromFavorites": "즐겨찾기에서 제거",

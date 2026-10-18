@@ -99,8 +99,14 @@ namespace ExClient
                 return false;
             foreach (var c in value)
             {
-                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-')
+                if (!((c >= '0' && c <= '9')
+                    || (c >= 'a' && c <= 'z')
+                    || (c >= 'A' && c <= 'Z')
+                    || c == '_'
+                    || c == '-'))
+                {
                     return false;
+                }
             }
             switch (value.ToLowerInvariant())
             {
@@ -263,11 +269,23 @@ namespace ExClient
             if (!HasValidIgneous)
                 return;
 
-            // Without a valid igneous, exhentai answers with an empty page and
-            // `Set-Cookie: igneous=mystery`.
-            var ex = await HttpClient.GetDocumentAsync(DomainProvider.Ex.RootUri);
-            if (ex.DocumentNode.SelectSingleNode("//html") is null || !HasValidIgneous)
-                throw new InvalidOperationException(LocalizedStrings.Resources.IgneousInvalid);
+            // A stale or rejected igneous must not block the surface log-on.
+            // Drop it and let the caller fall back to e-hentai.org.
+            void deleteIgneous()
+            {
+                CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Eh, "/"));
+                CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Ex, "/"));
+            }
+            try
+            {
+                var ex = await HttpClient.GetDocumentAsync(DomainProvider.Ex.RootUri);
+                if (ex.DocumentNode.SelectSingleNode("//html") is null || !HasValidIgneous)
+                    deleteIgneous();
+            }
+            catch
+            {
+                deleteIgneous();
+            }
         }
 
         private static readonly Uri _HathperksUri = new Uri(DomainProvider.Eh.RootUri, "hathperks.php");

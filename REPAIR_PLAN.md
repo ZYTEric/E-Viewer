@@ -76,30 +76,30 @@ issue 对应关系：
 
 ### M0 规划与基线（本文件）
 - [x] 明确根因与证据
-- [ ] 建立构建/验证方式（本地无 VS/MSBuild，见 §8）
+- [x] 建立构建/验证方式（GitHub Actions，见 §8）
 
 ### M1 Cookie 登录修复（P0，解决 S2/S3/S4、issue #180）
 改动点：
 
 1. `ExClient/Client-User.cs`
-   - 新增 `IsValidIgneous`：接受 `[0-9A-Za-z_-]{1,128}`，拒绝 `null/空/mystery/deleted`。
+   - 新增 `IsValidIgneousValue`：接受 `[0-9A-Za-z_-]{1,128}`，拒绝 `null/空/mystery/deleted`。
    - `LogOnAsync`：不再 `ToLowerInvariant()`；接受非 16 进制；`mystery/deleted` 视为无效。
    - 同时把 `ipb_member_id` / `ipb_pass_hash` 写入 `e-hentai.org` 与 `exhentai.org`（对齐绿 E/白 E 做法）。
-   - 有 `igneous` 时写入两域；无 `igneous` 且目标为里站时抛出明确的本地化错误。
+   - 有 `igneous` 时写入两域；无 `igneous` 时仍可登录表站，登录后若开启里站则自动回退表站。
    - 登录后做**服务端校验**：
      - 主站：请求 `home.php`，若页面含 `ipb_login_form` 或跳到 `bounce_login` → 凭据无效。
-     - 里站：请求 `exhentai.org/`，若为空响应 / `igneous=mystery` / kokomade → igneous 无效或过期。
+     - 里站：请求 `exhentai.org/`，若为空响应 / `igneous=mystery` / kokomade → 删除失效 igneous，回退表站，不阻断登录。
    - `ResetExCookieAsync` 已删除：它假设「访问里站就能拿到 igneous」，但现在只会拿到 `mystery`，保留只会掩盖错误。
    - `NeedLogOn`：只要求 `ipb_member_id` / `ipb_pass_hash`；igneous 选填，不阻断登录。
 2. `ExViewer/Views/LogOnDialog.xaml`
    - igneous 输入框正则改为 `^[0-9A-Za-z_-]*$`。
-   - 文案标注「里站必填」。
+   - 文案标注「可选，仅访问里站需要」。
 3. `ExViewer/Views/LogOnDialog.xaml.cs`
    - `CanLogOn` 放松 igneous 校验；保留 `ipb_pass_hash` 32 位 hex 校验。
-   - 登录里站但未填 igneous 时，给出可读提示，不再走 `ResetExCookieAsync`。
-   - `injectOtherPage` 一并读取 `igneous`（若 WebView 上下文可读）。
+   - 无有效 igneous 时先复用同账号已有值；仍无则预填 cookie 表单并提示可直接登录表站；不再阻断登录。
+   - `injectLogOnPage` 一并读取 `igneous`（若 WebView 上下文可读）。
 4. `ExClient/Strings/*/Resources.resjson`
-   - 新增：`IgneousRequired`、`IgneousInvalid`、`WrongAccountInfo`（已有）等提示；四种语言同步。
+   - 无新增错误键；igneous 失效时直接回退，不再抛专用错误。四种语言同步。
 5. `ExClient/Internal/MyHttpClient.cs`
    - 将空响应、`igneous=mystery`、`0x80072EFD` 等网络/HRESULT 转成可读文案。
 6. `ExViewer/Views/SplashControl.xaml.cs`
@@ -126,13 +126,13 @@ issue 对应关系：
    - 用 `NavigationCompleted` / `CoreWebView2.DOMContentLoaded` 替代 `DOMContentLoaded`。
    - 用 `ExecuteScriptAsync` 替代 `InvokeScriptAsync`。
    - 登录完成后从 `e-hentai.org`、`exhentai.org`、`forums.e-hentai.org` 读取 cookie，交给 `Client.LogOnAsync` 完成落库。
-   - 若 WebView2 运行时缺失：回退到旧 `WebView`，并提示“网页登录不可用，请使用 Cookie 登录”。
-3. 资源文案：新增 WebView2 初始化失败、Cloudflare 拦截提示。
+   - 依赖包已包含 WebView2 运行时；不再保留旧 `WebView` 回退。
+3. 资源文案：新增网络错误、连接错误、无 igneous 回退等提示。
 
 验收：
 - 网页登录可显示登录表单并完成登录。
 - 登录后里站可直接访问（前提是浏览器会话下发了 igneous）。
-- 无 WebView2 运行时时有明确回退提示，不崩溃。
+- 无有效 igneous 时可登录表站，并给出回退提示。
 
 风险：WebView2 会增加包体/运行时依赖；若 CI 构建失败或运行时兼容性差，保留旧 WebView + Cookie 登录主路径（M2 可回滚，不影响 M1）。
 
@@ -231,18 +231,18 @@ issue 对应关系：
 | --- | --- |
 | `ExClient/Client-User.cs` | igneous 新格式校验；双域写入 cookie；登录后服务端校验；删除 `ResetExCookieAsync`；igneous 选填，无值时回退表站 |
 | `ExClient/Internal/MyHttpClient.cs` | 移除自动重置 ex cookie 的调用，避免掩盖错误 |
-| `ExClient/Strings/{en,zh-hans,zh-hant,ko}/Resources.resjson` | 新增 `IgneousInvalid`、`IgneousRequired` |
+| `ExClient/Strings/{en,zh-hans,zh-hant,ko}/Resources.resjson` | 无新增键（igneous 失效时直接回退表站） |
 | `ExViewer/Views/LogOnDialog.xaml` | igneous 正则放宽；`WebView` → `muxc:WebView2` |
-| `ExViewer/Views/LogOnDialog.xaml.cs` | 新校验、错误映射、WebView2 初始化/导航完成/cookie 读取、WebView2 缺失回退 |
+| `ExViewer/Views/LogOnDialog.xaml.cs` | 新校验、错误映射、WebView2 初始化/导航完成/cookie 读取、保活与无 igneous 回退 |
 | `ExViewer/Views/SplashControl.xaml.cs` | `NeedLogOn` 判定前应用设置，使 `Host` 正确 |
-| `ExViewer/Strings/{en,zh-hans,zh-hant,ko}/Resources.resJson` | igneous 提示文案、`NetworkError`、`WebView2Unavailable` |
+| `ExViewer/Strings/{en,zh-hans,zh-hant,ko}/Resources.resJson` | igneous 提示文案、`NetworkError`、`WebViewConnectionError`、`IgneousNotAvailable`、`NoIgneousFallback` |
 
 ### 待验证（M4）
 
 - [x] CI 四架构构建通过（x86 / x64 / arm / arm64）
-- [ ] WebView2 能否在 `ContentDialog` 中正常渲染（airspace 风险）
-- [ ] 网页登录后能否从 WebView2 拿到 igneous
-- [ ] T1–T10 真机回归
+- [x] WebView2 能否在 `ContentDialog` 中正常渲染（airspace 风险）
+- [x] 网页登录后能否从 WebView2 拿到 igneous（法国节点实测有效）
+- [ ] T1–T10 全部边界用例（核心路径已由用户双网络实测通过）
 
 ### CI 结果（2026-10-18）
 
@@ -288,6 +288,11 @@ issue 对应关系：
   不会自行下发有效 igneous；有效值必须来自已有浏览器会话。
 - 2024.11.3.7：igneous 恢复为选填。没有 igneous 仍可登录表站；登录成功后若 `VisitEx` 开启但无有效 igneous，
   自动关闭 `VisitEx` 并提示。网页登录无 igneous 时预填会员号/passhash，用户可直接登录表站或补填 igneous。
+- 2026-10-18 用户在新加坡（无里站）与法国（可访问里站）两种网络下实测 2024.11.3.7：
+  网页登录、Cookie 登录、无 igneous 回退表站、里站访问均符合预期。
+- 2024.11.3.8（打包前复查）：修复同账号 igneous 复用因提前清空 cookie 而失效；失效 igneous 不再阻断登录，
+  而是清除后回退表站；网页登录消息校验来源、导航处理增加异常边界、cookie 读取防重入；
+  首次启动的回退提示延迟到主界面显示。
 - 测试期间多次卸载重装，应用本地设置/历史被清空；最终已用测试 cookie 重新登录。
 
 下一步：

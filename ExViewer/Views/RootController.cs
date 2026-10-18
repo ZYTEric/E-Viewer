@@ -69,6 +69,7 @@ namespace ExViewer.Views
             }
 
             private static Uri launchUri;
+            private static string pendingToast;
 
             internal static void SetSplitViewButtonPlaceholderVisibility(bool visible)
             {
@@ -248,7 +249,13 @@ namespace ExViewer.Views
             public static void SendToast(string content, Type source)
             {
                 if (!Available)
+                {
+                    // Keep page-independent messages (for example the log-on
+                    // fallback) until the main page is visible.
+                    if (source is null && content != null)
+                        pendingToast = content;
                     return;
+                }
                 if (content is null)
                     throw new ArgumentNullException(nameof(content));
 
@@ -264,6 +271,15 @@ namespace ExViewer.Views
                     Parent.bd_Toast.Visibility = Visibility.Visible;
                     PlayToastPanel.Begin();
                 });
+            }
+
+            internal static void FlushPendingToast()
+            {
+                if (pendingToast is null)
+                    return;
+                var content = pendingToast;
+                pendingToast = null;
+                SendToast(content, null);
             }
 
             private static void PlayToast_Completed(object sender, object e)
@@ -305,7 +321,6 @@ namespace ExViewer.Views
                     var dialog = new LogOnDialog();
                     await dialog.ShowAsync();
                     Microsoft.AppCenter.Analytics.Analytics.TrackEvent("Log on requested", new Dictionary<string, string> { ["Result"] = (dialog.Succeed ? "Succeed" : "Failed") });
-                    UpdateUserInfo(dialog.Succeed);
                     if (dialog.Succeed)
                     {
                         Settings.SettingCollection.Current.Apply();
@@ -317,6 +332,7 @@ namespace ExViewer.Views
                             SendToast(Strings.Resources.Views.LogOnDialog.NoIgneousFallback, null);
                         }
                     }
+                    UpdateUserInfo(dialog.Succeed);
                     return dialog.Succeed;
                 });
             }
