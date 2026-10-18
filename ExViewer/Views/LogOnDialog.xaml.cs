@@ -27,6 +27,31 @@ namespace ExViewer.Views
         {
             InitializeComponent();
             VM.PropertyChanged += VM_PropertyChanged;
+            keepAliveTimer.Tick += keepAliveTimer_Tick;
+        }
+
+        /// <summary>
+        /// Keeps the forums connection/session warm while the user fills the log-on form.
+        /// Idle connections are closed by the server and a later POST fails with
+        /// ERR_CONNECTION_CLOSED.
+        /// </summary>
+        private readonly DispatcherTimer keepAliveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+
+        private async void keepAliveTimer_Tick(object sender, object e)
+        {
+            if (VM.UseCookieLogOn || wv.CoreWebView2 is null)
+            {
+                keepAliveTimer.Stop();
+                return;
+            }
+            try
+            {
+                await wv.ExecuteScriptAsync("fetch('/', { method: 'HEAD', cache: 'no-store' }).catch(function () {});");
+            }
+            catch
+            {
+                keepAliveTimer.Stop();
+            }
         }
 
         private void VM_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -171,6 +196,7 @@ namespace ExViewer.Views
 
         private void btnUseCookie_Click(object sender, RoutedEventArgs e)
         {
+            keepAliveTimer.Stop();
             VM.UseCookieLogOn = true;
             reset();
         }
@@ -193,6 +219,7 @@ namespace ExViewer.Views
 
         private void reset()
         {
+            keepAliveTimer.Stop();
             VM.Reset();
 
             VM.ShowErrorMsg = false;
@@ -217,23 +244,26 @@ namespace ExViewer.Views
                 u = escape(pass.UserName);
                 p = escape(pass.Password);
             }
-            await wv.ExecuteScriptAsync($@"
+            var result = await wv.ExecuteScriptAsync($@"
 (function ()
 {{
     var nL = document.LOGIN;
-    if(!nL) return;
+    if(!nL) return false;
     var nU = nL.UserName;
-    if(!nU) return;
+    if(!nU) return false;
     var nP = nL.PassWord;
-    if(!nP) return;
+    if(!nP) return false;
     nU.value = '{u}';
     nP.value = '{p}';
     nL.addEventListener('submit', function ()
     {{
         window.chrome.webview.postMessage(nU.value + '\n' + nP.value);
     }});
+    return true;
 }})();
 ");
+            if (result == "true" && !keepAliveTimer.IsEnabled)
+                keepAliveTimer.Start();
             string escape(string value) => value.Replace(@"\", @"\\").Replace("'", @"\'");
         }
 
@@ -426,6 +456,7 @@ namespace ExViewer.Views
 
         private void cd_Closed(ContentDialog sender, ContentDialogClosedEventArgs args)
         {
+            keepAliveTimer.Stop();
             try
             {
                 wv.Close();
