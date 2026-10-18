@@ -74,7 +74,7 @@ namespace ExViewer.Views
             public LogOnInfo LogOnInfoBackup { get; set; }
 
             [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-            private bool _UseCookieLogOn;
+            private bool _UseCookieLogOn = true;
             public bool UseCookieLogOn { get => _UseCookieLogOn; set => Set(nameof(PrimaryButtonText), nameof(IsPrimaryButtonEnabled), ref _UseCookieLogOn, value); }
 
             public AsyncCommand LogOn { get; }
@@ -201,11 +201,14 @@ namespace ExViewer.Views
             exVisited = false;
             if (VM.UseCookieLogOn)
                 return;
-            if (!await ensureWebViewAsync())
+            if (webView2Initialized)
+            {
+                wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
                 return;
-            wv.CoreWebView2.Navigate("about:blank");
-            await Dispatcher.YieldIdle();
-            wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
+            }
+            // Setting Source initializes CoreWebView2 and starts navigation.
+            wv.Source = Client.LogOnUri;
+            await ensureWebViewAsync();
         }
 
         private async Task<bool> ensureWebViewAsync()
@@ -424,6 +427,20 @@ namespace ExViewer.Views
                 Client.Current.RestoreLogOnInfo(VM.LogOnInfoBackup);
             if (Client.Current.NeedLogOn)
                 Application.Current.Exit();
+        }
+
+        private void cd_Closed(ContentDialog sender, ContentDialogClosedEventArgs args)
+        {
+            if (!webView2Initialized)
+                return;
+            webView2Initialized = false;
+            try
+            {
+                wv.Close();
+            }
+            catch
+            {
+            }
         }
     }
 }

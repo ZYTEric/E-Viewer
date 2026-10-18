@@ -15,6 +15,7 @@
                           IsEnabled="{x:Bind VM.Succeed, Converter={StaticResource LogicalNotConverter}, Mode=OneWay}"
                           IsEnabledChanged="cd_IsEnabledChanged"
                           Closing="cd_Closing"
+                          Closed="cd_Closed"
                           PrimaryButtonText="{x:Bind VM.PrimaryButtonText, Mode=OneWay}"
                           IsPrimaryButtonEnabled="{x:Bind VM.IsPrimaryButtonEnabled, Mode=OneWay}"
                           PrimaryButtonClick="cd_PrimaryButtonClick"
