@@ -60,6 +60,14 @@ namespace ExViewer.Views
             {
                 if (VM.ShowErrorMsg && !string.IsNullOrEmpty(VM.ErrorMsg))
                 {
+                    // The cookie panel has its own error text.
+                    if (VM.UseCookieLogOn)
+                        return;
+                    // Never replace the interactive log-on form with an error page;
+                    // the user may still be typing.
+                    var url = wv.CoreWebView2?.Source ?? "";
+                    if (url.IndexOf("act=Login", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return;
                     showErrorMsgInWv(VM.ErrorMsg, "");
                 }
             }
@@ -267,9 +275,14 @@ namespace ExViewer.Views
             string escape(string value) => value.Replace(@"\", @"\\").Replace("'", @"\'");
         }
 
-        private async Task tryLogOnFromCookiesAsync()
+        private async Task tryLogOnFromCookiesAsync(Uri current)
         {
             if (cookieLogOnTried || VM.LogOn.IsExecuting)
+                return;
+
+            // Wait until the user actually submits the form and is redirected away
+            // from the log-on page. Cookies may already exist from an older session.
+            if (current.AbsoluteUri.IndexOf("act=Login", StringComparison.OrdinalIgnoreCase) >= 0)
                 return;
 
             var cookies = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -359,7 +372,7 @@ namespace ExViewer.Views
             if (uri.AbsoluteUri.StartsWith(Client.LogOnUri.AbsoluteUri, StringComparison.Ordinal))
                 await injectLogOnPage();
 
-            await tryLogOnFromCookiesAsync();
+            await tryLogOnFromCookiesAsync(uri);
         }
 
         private void showErrorMsgInWv(string line1, string line2)
