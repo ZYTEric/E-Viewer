@@ -421,7 +421,7 @@ namespace ExViewer.Views
             reset();
         }
 
-        private void wv_CoreWebView2Initialized(Microsoft.UI.Xaml.Controls.WebView2 sender, CoreWebView2InitializedEventArgs args)
+        private void wv_CoreWebView2Initialized(Microsoft.UI.Xaml.Controls.WebView2 sender, Microsoft.UI.Xaml.Controls.CoreWebView2InitializedEventArgs args)
         {
             if (args.Exception == null)
                 return;
