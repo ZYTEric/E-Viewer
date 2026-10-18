@@ -181,7 +181,6 @@ namespace ExViewer.Views
             reset();
         }
 
-        private bool webView2Initialized;
         private bool cookieLogOnTried;
         private bool exVisited;
 
@@ -192,7 +191,7 @@ namespace ExViewer.Views
             "https://exhentai.org/",
         };
 
-        private async void reset()
+        private void reset()
         {
             VM.Reset();
 
@@ -201,34 +200,10 @@ namespace ExViewer.Views
             exVisited = false;
             if (VM.UseCookieLogOn)
                 return;
-            if (webView2Initialized)
-            {
+            if (wv.CoreWebView2 is null)
+                wv.Source = Client.LogOnUri; // initializes CoreWebView2 and navigates
+            else
                 wv.CoreWebView2.Navigate(Client.LogOnUri.ToString());
-                return;
-            }
-            // Setting Source initializes CoreWebView2 and starts navigation.
-            wv.Source = Client.LogOnUri;
-            await ensureWebViewAsync();
-        }
-
-        private async Task<bool> ensureWebViewAsync()
-        {
-            if (webView2Initialized)
-                return true;
-            try
-            {
-                await wv.EnsureCoreWebView2Async();
-                webView2Initialized = true;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Telemetry.LogException(ex);
-                VM.ErrorMsg = Strings.Resources.Views.LogOnDialog.WebView2Unavailable;
-                VM.UseCookieLogOn = true;
-                VM.ShowErrorMsg = true;
-                return false;
-            }
         }
 
         private async Task injectLogOnPage()
@@ -339,7 +314,7 @@ namespace ExViewer.Views
 
         private void showErrorMsgInWv(string line1, string line2)
         {
-            if (!webView2Initialized)
+            if (VM.UseCookieLogOn)
                 return;
             wv.NavigateToString($@"
 <html>
@@ -431,9 +406,6 @@ namespace ExViewer.Views
 
         private void cd_Closed(ContentDialog sender, ContentDialogClosedEventArgs args)
         {
-            if (!webView2Initialized)
-                return;
-            webView2Initialized = false;
             try
             {
                 wv.Close();
