@@ -52,7 +52,7 @@
   （CI 中执行 `Opportunity.ResourceGenerator.Generator.exe ./ExViewer.sln`）
 - 编译并运行
 
-CI 使用 `windows-2022`，因为 `windows-latest` 已不再提供 UWP 工具链。
+CI 使用 `windows-2022`，因为 `windows-latest` 当前只提供 Windows SDK 10.0.26100.0，而项目目标是 10.0.22621.0。
 
 ## 翻译
 

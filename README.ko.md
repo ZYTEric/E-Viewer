@@ -52,7 +52,7 @@ Windows 10(버전 1809 이상) 및 Windows 11용 e-hentai.org / ExHentai UWP 클
   (CI에서는 `Opportunity.ResourceGenerator.Generator.exe ./ExViewer.sln` 실행)
 - 빌드 및 실행
 
-CI는 UWP 도구 체인이 없는 `windows-latest` 대신 `windows-2022`를 사용합니다.
+CI는 `windows-latest`가 현재 Windows SDK 10.0.26100.0만 제공하고 프로젝트는 10.0.22621.0을 대상으로 하므로 `windows-2022`를 사용합니다.
 
 ## 번역
 
