@@ -326,7 +326,13 @@ namespace ExViewer.Views
                         Settings.SettingCollection.Current.Apply();
                         // igneous is optional. Without it ExHentai cannot work,
                         // so fall back to the surface site instead of failing.
-                        if (Client.Current.Host == ExClient.HostType.ExHentai && !Client.Current.HasValidIgneous)
+                        if (dialog.IgneousRejectedByServer)
+                        {
+                            // LogOnAsync dropped an igneous the server refused
+                            // and switched to the surface site itself.
+                            SendToast(Strings.Resources.Views.LogOnDialog.StaleIgneousFallback, null);
+                        }
+                        else if (Client.Current.Host == ExClient.HostType.ExHentai && !Client.Current.HasValidIgneous)
                         {
                             Settings.SettingCollection.Current.VisitEx = false;
                             SendToast(Strings.Resources.Views.LogOnDialog.NoIgneousFallback, null);

@@ -1,5 +1,6 @@
 using ExClient.Forums;
 using ExClient.Internal;
+using HtmlAgilityPack;
 
 using System;
 using System.Linq;
@@ -73,6 +74,12 @@ namespace ExClient
 
         public bool HasValidIgneous
             => IsValidIgneousValue(GetExCookieValue(CookieNames.Igneous));
+
+        /// <summary>
+        /// True when the last log-on supplied an igneous that ExHentai
+        /// rejected, so the surface site was selected instead.
+        /// </summary>
+        public bool IgneousRejectedByServer { get; private set; }
 
         /// <summary>
         /// Returns the igneous cookie of the current account if it is valid.
@@ -217,7 +224,14 @@ namespace ExClient
                 igneous = null;
 
             var cookieBackUp = GetLogOnInfo();
+            var hostBackUp = Host;
+            IgneousRejectedByServer = false;
             ClearLogOnInfo();
+
+            // ExHentai must be verified even if the user selected the surface
+            // site, so that `Host` is a reliable result after the log-on.
+            if (hostBackUp != HostType.ExHentai)
+                Host = HostType.ExHentai;
 
             // Log on info is shared by both domains.
             _SetCookieAll(CookieNames.MemberID, userID.ToString());
@@ -244,9 +258,19 @@ namespace ExClient
 
                 if (NeedLogOn)
                     throw new InvalidOperationException(LocalizedStrings.Resources.WrongAccountInfo);
+
+                // No usable igneous means ExHentai stays unreachable; let the
+                // caller fall back to the surface site.
+                if (!HasValidIgneous)
+                {
+                    // The user pasted an igneous but ExHentai refused it.
+                    IgneousRejectedByServer = igneous != null;
+                    Host = HostType.EHentai;
+                }
             }
             catch (Exception)
             {
+                Host = hostBackUp;
                 RestoreLogOnInfo(cookieBackUp);
                 throw;
             }
@@ -271,21 +295,36 @@ namespace ExClient
 
             // A stale or rejected igneous must not block the surface log-on.
             // Drop it and let the caller fall back to e-hentai.org.
-            void deleteIgneous()
-            {
-                CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Eh, "/"));
-                CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Ex, "/"));
-            }
+            var rejected = false;
             try
             {
                 var ex = await HttpClient.GetDocumentAsync(DomainProvider.Ex.RootUri);
-                if (ex.DocumentNode.SelectSingleNode("//html") is null || !HasValidIgneous)
-                    deleteIgneous();
+                rejected = !_IsExHomePage(ex) || !HasValidIgneous;
             }
             catch
             {
-                deleteIgneous();
+                // Unreachable or blocked network: keep the value for later.
             }
+            if (rejected)
+                deleteIgneous();
+        }
+
+        private void deleteIgneous()
+        {
+            CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Eh, "/"));
+            CookieManager.DeleteCookie(new HttpCookie(CookieNames.Igneous, Domains.Ex, "/"));
+        }
+
+        private static bool _IsExHomePage(HtmlDocument document)
+        {
+            // A rejected igneous still answers 200, with an empty body and a
+            // `Set-Cookie: igneous=mystery` header. A working one serves the
+            // front page with the gallery search box.
+            var root = document?.DocumentNode;
+            if (root?.SelectSingleNode("//html") is null)
+                return false;
+            return root.SelectSingleNode("//form[@id='searchbox']") != null
+                || root.SelectSingleNode("//div[@id='toppane']") != null;
         }
 
         private static readonly Uri _HathperksUri = new Uri(DomainProvider.Eh.RootUri, "hathperks.php");

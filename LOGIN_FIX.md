@@ -36,7 +36,7 @@ This change fixes log-on for both e-hentai.org and ExHentai.
 - `ExClient/Internal/MyHttpClient.cs`
   - Remove the automatic ExHentai cookie reset, which hid the real error.
 - CI
-  - Pin the runner to `windows-2022`; `windows-latest` no longer provides the UWP toolchain.
+  - Pin the runner to `windows-2022`; `windows-latest` currently only ships Windows SDK 10.0.26100.0 while the project targets 10.0.22621.0.
 
 ## Behavior
 

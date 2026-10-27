@@ -52,7 +52,7 @@ Here is a simple introduction for those who would like to build this project by 
   (CI runs `Opportunity.ResourceGenerator.Generator.exe ./ExViewer.sln`)
 - Build and run
 
-The CI workflow uses `windows-2022`, because `windows-latest` no longer provides the UWP toolchain.
+The CI workflow uses `windows-2022`, because `windows-latest` currently only ships Windows SDK 10.0.26100.0 while the project targets 10.0.22621.0.
 
 ## Translate
 
