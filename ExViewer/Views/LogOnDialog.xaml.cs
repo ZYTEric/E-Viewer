@@ -99,10 +99,15 @@ namespace ExViewer.Views
                     if (!string.IsNullOrEmpty(UserName) && !string.IsNullOrEmpty(Password))
                         AccountManager.CurrentCredential = AccountManager.CreateCredential(UserName, Password);
 
+                    // LogOnAsync switches to the surface site when the server
+                    // rejected the igneous cookie; report it to the caller.
+                    IgneousRejectedByServer = Client.Current.IgneousRejectedByServer;
                     Succeed = true;
                 }, s => CanLogOn);
                 LogOn.PropertyChanged += (s, e) => OnPropertyChanged(nameof(IsPrimaryButtonEnabled));
             }
+
+            public bool IgneousRejectedByServer { get; set; }
 
             public LogOnInfo LogOnInfoBackup { get; set; }
 
@@ -201,6 +206,8 @@ namespace ExViewer.Views
         }
 
         public bool Succeed => VM.Succeed;
+
+        public bool IgneousRejectedByServer => VM.IgneousRejectedByServer;
 
         private void btnUseCookie_Click(object sender, RoutedEventArgs e)
         {
@@ -471,6 +478,31 @@ namespace ExViewer.Views
                 default:
                     message = $"{args.WebErrorStatus} ({(int)args.WebErrorStatus})";
                     break;
+                }
+                // The forums log-on may already have succeeded before the
+                // browser failed to open ExHentai. Read the cookies once, so
+                // that the pre-filled cookie form fallback still works.
+                if (!VM.UseCookieLogOn && !cookieLogOnTried && !cookieCheckInProgress)
+                {
+                    cookieCheckInProgress = true;
+                    try
+                    {
+                        await tryLogOnFromCookiesAsync(Client.LogOnUri);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex, "WebView2");
+                    }
+                    finally
+                    {
+                        cookieCheckInProgress = false;
+                    }
+                }
+                if (VM.UseCookieLogOn)
+                {
+                    keepAliveTimer.Stop();
+                    cookieLogOnTried = true;
+                    return;
                 }
                 showErrorMsgInWv(message, sender.Source?.ToString() ?? "");
                 return;
